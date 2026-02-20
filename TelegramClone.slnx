@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TelegramClone.Application/TelegramClone.Application.csproj" />
+    <Project Path="src/TelegramClone.Domain/TelegramClone.Domain.csproj" />
+    <Project Path="src/TelegramClone.Infrastructure/TelegramClone.Infrastructure.csproj" />
+    <Project Path="src/TelegramClone.Web/TelegramClone.Web.csproj" />
+  </Folder>
+</Solution>
