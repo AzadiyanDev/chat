@@ -1,0 +1,7 @@
+{
+  "name": "Telegram Clone App",
+  "description": "A high-performance, mobile-first chat application using Angular Signals, Tailwind CSS, and GSAP animations.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
