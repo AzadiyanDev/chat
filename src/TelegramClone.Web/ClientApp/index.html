@@ -5,21 +5,12 @@
   <title>AzadiyanChat</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <!-- GSAP Core + ScrollToPlugin only (deferred) -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollToPlugin.min.js"></script>
-  <!-- Phosphor Icons -->
-  <script defer src="https://unpkg.com/@phosphor-icons/web"></script>
-  <!-- Lottie Web -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-  <!-- Register GSAP Plugins after load -->
-  <script>
-    window.addEventListener('load', function() {
-      if (typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-        gsap.registerPlugin(ScrollToPlugin);
-      }
-    });
-  </script>
+  <meta name="theme-color" content="#3390ec">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AzadiyanChat">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192x192.svg">
   <style>
     /* ============ DESIGN TOKENS — CSS Variables ============ */
     :root, [data-theme="classic"] {

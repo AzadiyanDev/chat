@@ -43,6 +43,16 @@ public class ChatsController : ControllerBase
         return Ok(chats);
     }
 
+    [HttpGet("saved")]
+    public async Task<IActionResult> GetSavedMessages()
+    {
+        var userId = await GetCurrentDomainUserIdAsync();
+        if (userId == null) return Unauthorized();
+
+        var chat = await _chatService.GetOrCreateSavedMessagesAsync(userId.Value);
+        return Ok(chat);
+    }
+
     [HttpGet("{id}")]
     public async Task<IActionResult> GetChat(Guid id)
     {

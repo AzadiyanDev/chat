@@ -90,4 +90,31 @@ public class ChatAppService : IChatAppService
         var chats = await _unitOfWork.Chats.SearchChatsAsync(userId, query);
         return _mapper.Map<IEnumerable<ChatListItemDto>>(chats);
     }
+
+    public async Task<ChatDto> GetOrCreateSavedMessagesAsync(Guid userId)
+    {
+        var existing = await _unitOfWork.Chats.GetSavedMessagesChatAsync(userId);
+        if (existing != null)
+            return _mapper.Map<ChatDto>(existing);
+
+        var chat = new Chat
+        {
+            Type = ChatType.SavedMessages,
+            Name = "Saved Messages",
+            IsPinned = true
+        };
+
+        chat.Participants.Add(new ChatParticipant
+        {
+            UserId = userId,
+            Role = "owner"
+        });
+
+        await _unitOfWork.Chats.AddAsync(chat);
+        await _unitOfWork.SaveChangesAsync();
+
+        // Re-fetch with includes so mapper has the participant User navigation
+        var created = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chat.Id);
+        return _mapper.Map<ChatDto>(created!);
+    }
 }

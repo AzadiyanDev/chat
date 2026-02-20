@@ -26,14 +26,27 @@ public class MessageAppService : IMessageAppService
 
     public async Task<MessageDto> SendMessageAsync(Guid chatId, Guid senderId, SendMessageDto dto)
     {
+        var attachments = (dto.Attachments ?? new List<SendAttachmentDto>())
+            .Where(a => !string.IsNullOrWhiteSpace(a.Url))
+            .Select(a => new Attachment
+            {
+                Type = a.Type,
+                Url = a.Url.Trim(),
+                Name = string.IsNullOrWhiteSpace(a.Name) ? null : a.Name.Trim(),
+                Size = a.Size,
+                ThumbnailUrl = string.IsNullOrWhiteSpace(a.ThumbnailUrl) ? null : a.ThumbnailUrl.Trim()
+            })
+            .ToList();
+
         var message = new Message
         {
             ChatId = chatId,
             SenderId = senderId,
-            Text = dto.Text,
+            Text = string.IsNullOrWhiteSpace(dto.Text) ? null : dto.Text.Trim(),
             ReplyToId = dto.ReplyToId,
             Status = MessageStatus.Sent,
-            Timestamp = DateTime.UtcNow
+            Timestamp = DateTime.UtcNow,
+            Attachments = attachments
         };
 
         await _unitOfWork.Messages.AddAsync(message);

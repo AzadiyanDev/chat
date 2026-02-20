@@ -2,6 +2,7 @@ import { Component, inject, computed, effect, ElementRef, viewChild, afterNextRe
 import { Router, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ChatService } from '../../core/services/chat.service';
+import { ApiService } from '../../core/services/api.service';
 import { VoiceRecorderService } from '../../core/services/voice-recorder.service';
 import { AnimationService } from '../../core/services/animation.service';
 import { AudioService } from '../../core/services/audio.service';
@@ -13,6 +14,7 @@ import { TypingIndicatorComponent } from '../../shared/components/typing-indicat
 import { DateSeparatorComponent } from '../../shared/components/date-separator.component';
 import { ShortTimePipe } from '../../shared/pipes/time.pipe';
 import { Message, Attachment } from '../../models/chat.model';
+import { firstValueFrom } from 'rxjs';
 
 declare var gsap: any;
 const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏'];
@@ -22,11 +24,27 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
   standalone: true,
   imports: [AvatarComponent, VoicePlayerComponent, EmojiPickerComponent, TypingIndicatorComponent, DateSeparatorComponent, ShortTimePipe, FormsModule],
   template: `
-    <div class="flex flex-col h-screen w-full overflow-hidden relative" id="chat-room-container">
+    <div
+      class="flex flex-col h-screen w-full overflow-hidden relative"
+      id="chat-room-container"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDropFiles($event)"
+    >
       
       <!-- Ambient gradient overlay — outside scroll container to prevent repaint -->
       <div class="fixed inset-0 pointer-events-none z-0" 
            style="background: linear-gradient(180deg, var(--tg-gradient-start) 0%, transparent 30%, transparent 70%, var(--tg-gradient-end) 100%); opacity: 0.15;"></div>
+
+      @if (isDraggingFiles()) {
+        <div class="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/40" style="backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
+          <div class="bg-white dark:bg-telegram-surface rounded-2xl border border-gray-200 dark:border-gray-700 px-5 py-4 text-center shadow-xl">
+            <i class="ph-fill ph-upload-simple text-2xl text-telegram-primary block mb-2"></i>
+            <div class="text-sm font-semibold">Drop files to attach</div>
+            <div class="text-xs text-telegram-muted mt-1">Image, video, audio, or document</div>
+          </div>
+        </div>
+      }
 
       <!-- Sticky Header — Glassmorphism -->
       <header class="safe-pt px-2 pb-2 flex items-center z-20 sticky top-0 glass-strong border-b border-white/10 relative">
@@ -37,21 +55,29 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         <div
           #peerProfileTrigger
           class="flex flex-1 items-center gap-3 cursor-pointer z-10"
-          (click)="openPeerProfile($event)"
+          (click)="chat()?.type !== 'saved' ? openPeerProfile($event) : null"
         >
-          <app-avatar 
-            [src]="chat()?.type === 'direct' ? participant()?.avatarUrl : chat()?.avatarUrl"
-            [name]="chat()?.type === 'direct' ? (participant()?.name || '') : (chat()?.name || '')"
-            [isOnline]="participant()?.isOnline || false"
-            size="sm"
-          ></app-avatar>
+          @if (chat()?.type === 'saved') {
+            <div class="w-9 h-9 rounded-full bg-telegram-primary text-white flex items-center justify-center shrink-0">
+              <i class="ph-fill ph-bookmark-simple text-lg"></i>
+            </div>
+          } @else {
+            <app-avatar 
+              [src]="chat()?.type === 'direct' ? participant()?.avatarUrl : chat()?.avatarUrl"
+              [name]="chat()?.type === 'direct' ? (participant()?.name || '') : (chat()?.name || '')"
+              [isOnline]="participant()?.isOnline || false"
+              size="sm"
+            ></app-avatar>
+          }
           <div class="flex flex-col">
             <h2 class="font-semibold text-base leading-tight">
-              {{ chat()?.type === 'direct' ? participant()?.name : chat()?.name }}
+              {{ chat()?.type === 'saved' ? 'Saved Messages' : (chat()?.type === 'direct' ? participant()?.name : chat()?.name) }}
             </h2>
-            <span class="text-xs text-telegram-primary" #statusText>
-              {{ statusString() }}
-            </span>
+            @if (chat()?.type !== 'saved') {
+              <span class="text-xs text-telegram-primary" #statusText>
+                {{ statusString() }}
+              </span>
+            }
           </div>
         </div>
         
@@ -73,7 +99,8 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
             <app-date-separator [label]="item.dateLabel!"></app-date-separator>
           } @else if (item.type === 'message') {
             @let msg = item.message!;
-            @let isMine = msg.senderId === chatService.currentUser().id;
+            @let isMine = chat()?.type === 'saved' ? true : msg.senderId === chatService.currentUser().id;
+            @let isSaved = chat()?.type === 'saved';
             @let showTail = item.showTail;
             @let isGrouped = item.isGrouped;
             
@@ -120,7 +147,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                   : 'bg-white dark:bg-telegram-surface text-black dark:text-white ' + (showTail ? 'rounded-2xl rounded-bl-sm' : 'rounded-2xl') + ' border border-gray-100 dark:border-gray-800/50'"
               >
                 <!-- Sender name for groups -->
-                @if (!isMine && (chat()?.type === 'group' || chat()?.type === 'channel') && !isGrouped) {
+                @if (!isMine && !isSaved && (chat()?.type === 'group' || chat()?.type === 'channel') && !isGrouped) {
                   <div class="text-xs font-semibold text-telegram-primary mb-0.5">
                     {{ chatService.getUserById(msg.senderId)?.name }}
                   </div>
@@ -136,6 +163,75 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                   ></app-voice-player>
                 }
 
+                <!-- File Attachments -->
+                @if (msg.attachments && msg.attachments.length > 0) {
+                  <div class="flex flex-col gap-2 mb-1">
+                    @for (att of msg.attachments; track att.id) {
+                      @if (att.type === 'image') {
+                        <div class="rounded-xl overflow-hidden border" [class]="isMine ? 'border-white/10' : 'border-gray-200 dark:border-gray-700'">
+                          <img
+                            [src]="att.url"
+                            [alt]="att.name || 'Image'"
+                            class="w-full cursor-pointer"
+                            style="max-height: 260px; object-fit: cover;"
+                            (click)="openAttachment(att, $event)"
+                          >
+                        </div>
+                      } @else if (att.type === 'video') {
+                        <div class="rounded-xl overflow-hidden border" [class]="isMine ? 'border-white/10' : 'border-gray-200 dark:border-gray-700'">
+                          <video
+                            class="w-full"
+                            style="max-height: 240px; background: rgba(0,0,0,0.2);"
+                            controls
+                            playsinline
+                            preload="metadata"
+                          >
+                            <source [src]="att.url">
+                          </video>
+                          <button class="w-full flex items-center gap-2 px-2 py-2 text-left" (click)="openAttachment(att, $event)">
+                            <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-telegram-primary/10 text-telegram-primary shrink-0">
+                              <i class="ph-fill ph-video-camera text-base"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                              <div class="text-sm truncate">{{ attachmentDisplayName(att) }}</div>
+                              <div class="text-xs" [class]="isMine ? 'text-white/70' : 'text-telegram-muted'">{{ attachmentMeta(att) }}</div>
+                            </div>
+                            <i class="ph ph-arrow-up-right text-sm"></i>
+                          </button>
+                        </div>
+                      } @else if (att.type === 'audio') {
+                        <div class="rounded-xl border px-2 py-2" [class]="isMine ? 'border-white/10 bg-white/10' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800'">
+                          <div class="flex items-center gap-2 mb-1">
+                            <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-telegram-primary/10 text-telegram-primary shrink-0">
+                              <i class="ph-fill ph-music-notes text-base"></i>
+                            </div>
+                            <div class="min-w-0">
+                              <div class="text-sm truncate">{{ attachmentDisplayName(att) }}</div>
+                              <div class="text-xs" [class]="isMine ? 'text-white/70' : 'text-telegram-muted'">{{ attachmentMeta(att) }}</div>
+                            </div>
+                          </div>
+                          <audio class="w-full" controls [src]="att.url"></audio>
+                        </div>
+                      } @else {
+                        <button
+                          class="w-full flex items-center gap-2 px-2 py-2 rounded-xl border text-left transition-all active:scale-95"
+                          [class]="isMine ? 'border-white/10 bg-white/10' : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800'"
+                          (click)="openAttachment(att, $event)"
+                        >
+                          <div class="w-8 h-8 rounded-lg flex items-center justify-center bg-telegram-primary/10 text-telegram-primary shrink-0">
+                            <i [class]="attachmentIcon(att) + ' text-base'"></i>
+                          </div>
+                          <div class="flex-1 min-w-0">
+                            <div class="text-sm truncate">{{ attachmentDisplayName(att) }}</div>
+                            <div class="text-xs" [class]="isMine ? 'text-white/70' : 'text-telegram-muted'">{{ attachmentMeta(att) }}</div>
+                          </div>
+                          <i class="ph ph-download-simple text-lg"></i>
+                        </button>
+                      }
+                    }
+                  </div>
+                }
+
                 <!-- Text -->
                 @if (msg.text) {
                   <p class="leading-relaxed whitespace-pre-wrap break-words" [id]="'text-' + msg.id">{{ msg.text }}</p>
@@ -147,7 +243,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                   [class]="isMine ? 'text-white/60' : 'text-telegram-muted'"
                 >
                   <span class="tabular-nums">{{ msg.timestamp | shortTime }}</span>
-                  @if (isMine) {
+                  @if (isMine && !isSaved) {
                     @if (msg.status === 'sending') {
                       <i class="ph ph-clock text-xs opacity-60"></i>
                     } @else if (msg.status === 'sent') {
@@ -183,7 +279,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         }
 
         <!-- Typing Indicator -->
-        @if (isTyping()) {
+        @if (isTyping() && chat()?.type !== 'saved') {
           <app-typing-indicator></app-typing-indicator>
         }
       </div>
@@ -202,7 +298,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
       <!-- Message Actions Preview -->
       @if (contextMenuMsg()) {
         @let activeMsg = contextMenuMsg()!;
-        @let previewIsMine = activeMsg.senderId === chatService.currentUser().id;
+        @let previewIsMine = chat()?.type === 'saved' ? true : activeMsg.senderId === chatService.currentUser().id;
         <div
           id="context-preview-backdrop"
           class="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -389,15 +485,15 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
              id="attachment-panel">
           <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-4"></div>
           <div class="grid grid-cols-4 gap-4">
-            <button class="flex flex-col items-center gap-2 group" (click)="toggleAttachmentPanel()">
+            <button class="flex flex-col items-center gap-2 group" (click)="openGalleryPicker()">
               <div class="w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-500 flex items-center justify-center text-2xl group-active:scale-90 transition-transform"><i class="ph-fill ph-image"></i></div>
               <span class="text-xs font-medium">Gallery</span>
             </button>
-            <button class="flex flex-col items-center gap-2 group" (click)="toggleAttachmentPanel()">
+            <button class="flex flex-col items-center gap-2 group" (click)="openFilePicker()">
               <div class="w-14 h-14 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center text-2xl group-active:scale-90 transition-transform"><i class="ph-fill ph-file-text"></i></div>
               <span class="text-xs font-medium">File</span>
             </button>
-            <button class="flex flex-col items-center gap-2 group" (click)="toggleAttachmentPanel()">
+            <button class="flex flex-col items-center gap-2 group" (click)="shareCurrentLocation()">
               <div class="w-14 h-14 rounded-2xl bg-purple-500/10 text-purple-500 flex items-center justify-center text-2xl group-active:scale-90 transition-transform"><i class="ph-fill ph-map-pin"></i></div>
               <span class="text-xs font-medium">Location</span>
             </button>
@@ -410,6 +506,63 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
       }
 
       <!-- Input Area — Floating Island -->
+      <input
+        #galleryInput
+        type="file"
+        accept="image/*,video/*"
+        class="hidden"
+        multiple
+        (change)="onGalleryFilesSelected($event)"
+      >
+      <input
+        #fileInput
+        type="file"
+        class="hidden"
+        multiple
+        (change)="onFileSelected($event)"
+      >
+
+      @if (pendingAttachments().length > 0) {
+        <div
+          class="absolute z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md px-3 py-2 w-[230px] max-w-[calc(100%-1.5rem)]"
+          style="left: 0.75rem;"
+          [style.bottom]="replyingTo() ? '6.3rem' : '4.55rem'"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-telegram-muted">
+              @if (isUploadingAttachments()) {
+                Uploading...
+              } @else {
+                {{ pendingAttachments().length }} file(s) ready
+              }
+            </span>
+            <button class="text-xs text-red-500 disabled:opacity-50" (click)="clearPendingAttachments()" [disabled]="isUploadingAttachments()">
+              Clear
+            </button>
+          </div>
+          <div class="flex gap-2 overflow-y-hidden overflow-x-auto no-scrollbar">
+            @for (att of pendingAttachments(); track att.id) {
+              <div class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                @if (att.type === 'image') {
+                  <img [src]="att.url" [alt]="att.name || 'Attachment'" class="w-full h-full" style="object-fit: cover;">
+                } @else {
+                  <div class="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-telegram-primary">
+                    <i [class]="attachmentIcon(att) + ' text-xl'"></i>
+                  </div>
+                }
+                <button
+                  class="absolute top-0 right-0 w-5 h-5 rounded-full bg-black/40 text-white text-xs flex items-center justify-center"
+                  (click)="removePendingAttachment(att.id, $event)"
+                  [disabled]="isUploadingAttachments()"
+                >
+                  <i class="ph ph-x"></i>
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
       <footer class="safe-pb absolute bottom-0 left-0 right-0 z-20 px-4 pb-2 pt-2">
         <div
           class="flex items-end px-3 py-2 gap-1.5 min-h-[52px] bg-white/90 dark:bg-telegram-surface rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700/50"
@@ -468,7 +621,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                 </button>
               </div>
             } @else {
-              <button #sendBtn (click)="initiateSendMessage()" class="absolute inset-0 w-9 h-9 rounded-full bg-telegram-primary text-white flex items-center justify-center opacity-0 scale-50 pointer-events-none origin-center shadow-md">
+              <button #sendBtn (click)="initiateSendMessage()" [disabled]="isUploadingAttachments()" class="absolute inset-0 w-9 h-9 rounded-full bg-telegram-primary text-white flex items-center justify-center opacity-0 scale-50 pointer-events-none origin-center shadow-md disabled:opacity-70">
                 <i class="ph-fill ph-paper-plane-right text-lg"></i>
               </button>
               
@@ -484,6 +637,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
 })
 export class ChatRoomComponent implements OnDestroy {
   chatService = inject(ChatService);
+  private api = inject(ApiService);
   voiceRecorder = inject(VoiceRecorderService);
   animationService = inject(AnimationService);
   audioService = inject(AudioService);
@@ -496,6 +650,8 @@ export class ChatRoomComponent implements OnDestroy {
   sendBtn = viewChild<ElementRef>('sendBtn');
   micBtn = viewChild<ElementRef>('micBtn');
   peerProfileTrigger = viewChild<ElementRef>('peerProfileTrigger');
+  galleryInput = viewChild<ElementRef>('galleryInput');
+  fileInput = viewChild<ElementRef>('fileInput');
 
   chatId = '';
   inputText = signal('');
@@ -506,7 +662,11 @@ export class ChatRoomComponent implements OnDestroy {
   // All UI state as signals for zoneless compatibility
   showAttachmentPanel = signal(false);
   replyingTo = signal<Message | null>(null);
-  pendingAttachments: Attachment[] = [];
+  pendingAttachments = signal<Attachment[]>([]);
+  isDraggingFiles = signal(false);
+  isUploadingAttachments = signal(false);
+  private transientAttachmentUrls = new Set<string>();
+  private pendingAttachmentFiles = new Map<string, File>();
 
   // Message action preview
   contextMenuMsg = signal<Message | null>(null);
@@ -545,6 +705,7 @@ export class ChatRoomComponent implements OnDestroy {
   statusString = computed(() => {
     const c = this.chat();
     if (!c) return '';
+    if (c.type === 'saved') return '';
     const typing = this.chatService.getTypingUsersForChat(this.chatId);
     if (typing.length > 0) {
       if (c.type === 'direct') return 'typing...';
@@ -559,6 +720,7 @@ export class ChatRoomComponent implements OnDestroy {
   peerProfile = computed<PeerProfileInfo | null>(() => {
     const c = this.chat();
     if (!c) return null;
+    if (c.type === 'saved') return null;
 
     if (c.type === 'direct') {
       const p = this.participant();
@@ -634,7 +796,7 @@ export class ChatRoomComponent implements OnDestroy {
     });
 
     effect(() => {
-      const hasContent = this.hasText() || this.pendingAttachments.length > 0;
+      const hasContent = this.hasText() || this.pendingAttachments().length > 0;
       const sBtn = this.sendBtn()?.nativeElement;
       const mBtn = this.micBtn()?.nativeElement;
       
@@ -659,6 +821,13 @@ export class ChatRoomComponent implements OnDestroy {
     if (this.scrollRafId) cancelAnimationFrame(this.scrollRafId);
     const el = this.messagesContainer()?.nativeElement;
     if (el) el.removeEventListener('scroll', this.scrollHandler);
+    for (const url of this.transientAttachmentUrls) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch { }
+    }
+    this.transientAttachmentUrls.clear();
+    this.pendingAttachmentFiles.clear();
   }
 
   /** Attach passive scroll listener for better performance */
@@ -691,7 +860,7 @@ export class ChatRoomComponent implements OnDestroy {
 
   onInputTextChange(val: string) {
     this.inputText.set(val);
-    this.hasText.set(val.trim().length > 0);
+    this.updateHasContentState();
   }
 
   handleEnter(event: Event) {
@@ -755,7 +924,276 @@ export class ChatRoomComponent implements OnDestroy {
 
   onEmojiSelected(emoji: string) {
     this.inputText.update(t => t + emoji);
-    this.hasText.set(true);
+    this.updateHasContentState();
+  }
+
+  openGalleryPicker() {
+    this.showAttachmentPanel.set(false);
+    const input = this.galleryInput()?.nativeElement as HTMLInputElement | undefined;
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }
+
+  openFilePicker() {
+    this.showAttachmentPanel.set(false);
+    const input = this.fileInput()?.nativeElement as HTMLInputElement | undefined;
+    if (!input) return;
+    input.value = '';
+    input.click();
+  }
+
+  onGalleryFilesSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    this.addFilesToPending(files);
+    input.value = '';
+  }
+
+  onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    this.addFilesToPending(files);
+    input.value = '';
+  }
+
+  removePendingAttachment(attachmentId: string, event?: Event) {
+    event?.stopPropagation();
+    if (this.isUploadingAttachments()) return;
+    let removedUrl: string | undefined;
+    this.pendingAttachments.update(items => {
+      const next: Attachment[] = [];
+      for (const item of items) {
+        if (item.id === attachmentId) {
+          removedUrl = item.url;
+          continue;
+        }
+        next.push(item);
+      }
+      return next;
+    });
+
+    if (removedUrl) this.revokeTransientUrl(removedUrl);
+    this.pendingAttachmentFiles.delete(attachmentId);
+    this.updateHasContentState();
+  }
+
+  clearPendingAttachments() {
+    if (this.isUploadingAttachments()) return;
+    const urls = this.pendingAttachments().map(a => a.url);
+    this.pendingAttachments.set([]);
+    this.pendingAttachmentFiles.clear();
+    for (const url of urls) {
+      this.revokeTransientUrl(url);
+    }
+    this.updateHasContentState();
+  }
+
+  attachmentIcon(att: Attachment): string {
+    if (att.type === 'image') return 'ph-fill ph-image';
+    if (att.type === 'video') return 'ph-fill ph-video-camera';
+    if (att.type === 'audio') return 'ph-fill ph-music-notes';
+    return 'ph-fill ph-file-text';
+  }
+
+  attachmentDisplayName(att: Attachment): string {
+    if (att.name && att.name.trim().length > 0) return att.name;
+    if (att.type === 'image') return 'Photo';
+    if (att.type === 'video') return 'Video';
+    if (att.type === 'audio') return 'Audio';
+    return 'File';
+  }
+
+  attachmentMeta(att: Attachment): string {
+    const ext = this.getFileExtension(att.name);
+    const size = this.formatFileSize(att.size);
+    if (ext && size) return `${ext.toUpperCase()} • ${size}`;
+    if (ext) return ext.toUpperCase();
+    if (size) return size;
+    return 'Attachment';
+  }
+
+  private getFileExtension(fileName?: string): string {
+    if (!fileName) return '';
+    const parts = fileName.split('.');
+    if (parts.length <= 1) return '';
+    return parts[parts.length - 1];
+  }
+
+  private formatFileSize(size?: number): string {
+    if (!size || size <= 0) return '';
+    if (size < 1024) return `${size} B`;
+    const kb = size / 1024;
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+    const mb = kb / 1024;
+    if (mb < 1024) return `${mb.toFixed(1)} MB`;
+    const gb = mb / 1024;
+    return `${gb.toFixed(1)} GB`;
+  }
+
+  openAttachment(att: Attachment, event?: Event) {
+    event?.stopPropagation();
+    window.open(att.url, '_blank', 'noopener,noreferrer');
+  }
+
+  onDragOver(event: DragEvent) {
+    const hasFiles = !!event.dataTransfer?.types && Array.from(event.dataTransfer.types).includes('Files');
+    if (!hasFiles) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    this.isDraggingFiles.set(true);
+  }
+
+  onDragLeave(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const host = event.currentTarget as HTMLElement | null;
+    if (!host) {
+      this.isDraggingFiles.set(false);
+      return;
+    }
+
+    const rect = host.getBoundingClientRect();
+    const x = event.clientX;
+    const y = event.clientY;
+    const leftHost = x <= rect.left || x >= rect.right || y <= rect.top || y >= rect.bottom;
+    if (leftHost) this.isDraggingFiles.set(false);
+  }
+
+  onDropFiles(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDraggingFiles.set(false);
+
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    this.addFilesToPending(files);
+  }
+
+  shareCurrentLocation() {
+    this.showAttachmentPanel.set(false);
+    if (!navigator.geolocation) {
+      this.sendQuickMessage('📍 Location is not available on this device.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+        const locationAttachment: Attachment = {
+          id: this.randomId('att'),
+          type: 'document',
+          url: mapsUrl,
+          name: `Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`
+        };
+        this.sendQuickMessage('📍 Shared location', [locationAttachment]);
+      },
+      () => {
+        this.sendQuickMessage('📍 Could not access your location.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  }
+
+  private addFilesToPending(files: File[]) {
+    if (!files || files.length === 0) return;
+    const mapped = files
+      .filter(f => f.size > 0)
+      .map(f => this.createAttachmentFromFile(f));
+    if (mapped.length === 0) return;
+
+    this.pendingAttachments.update(items => [...items, ...mapped]);
+    this.showEmojiPicker.set(false);
+    this.showAttachmentPanel.set(false);
+    this.updateHasContentState();
+  }
+
+  private createAttachmentFromFile(file: File): Attachment {
+    const url = URL.createObjectURL(file);
+    const id = this.randomId('att');
+    this.transientAttachmentUrls.add(url);
+    this.pendingAttachmentFiles.set(id, file);
+    return {
+      id,
+      type: this.resolveAttachmentType(file),
+      url,
+      name: file.name,
+      size: file.size
+    };
+  }
+
+  private resolveAttachmentType(file: File): Attachment['type'] {
+    const mime = (file.type || '').toLowerCase();
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    return 'document';
+  }
+
+  private async uploadPendingAttachments(attachments: Attachment[]): Promise<Attachment[]> {
+    return await Promise.all(attachments.map(async att => {
+      const file = this.pendingAttachmentFiles.get(att.id);
+      if (!file) return { ...att };
+
+      const uploaded = await firstValueFrom(this.api.uploadAttachment(file));
+      return {
+        ...att,
+        url: uploaded.url
+      };
+    }));
+  }
+
+  private sendQuickMessage(text: string, attachments?: Attachment[]) {
+    const tempId = this.randomId('m');
+    this.chatService.addMessage({
+      id: tempId,
+      chatId: this.chatId,
+      senderId: this.chatService.currentUser().id,
+      text,
+      attachments: attachments && attachments.length > 0 ? attachments : undefined,
+      timestamp: Date.now(),
+      status: 'sent'
+    });
+    this.audioService.playSendSound();
+    setTimeout(() => {
+      this.scrollToBottom();
+      const el = document.getElementById('msg-' + tempId);
+      if (el) this.animationService.popInMessage(el);
+    }, 50);
+  }
+
+  private buildAttachmentSummaryText(text: string, attachments: Attachment[]): string {
+    const trimmed = text.trim();
+    if (trimmed.length > 0) return trimmed;
+    if (attachments.length === 1) {
+      const first = attachments[0];
+      if (first.type === 'image') return '🖼 Photo';
+      if (first.type === 'video') return '🎬 Video';
+      if (first.type === 'audio') return '🎵 Audio';
+      return `📎 ${first.name || 'File'}`;
+    }
+    return `📎 ${attachments.length} attachments`;
+  }
+
+  private randomId(prefix: string): string {
+    return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private revokeTransientUrl(url: string) {
+    if (!url.startsWith('blob:')) return;
+    if (!this.transientAttachmentUrls.has(url)) return;
+    try {
+      URL.revokeObjectURL(url);
+    } catch { }
+    this.transientAttachmentUrls.delete(url);
+  }
+
+  private updateHasContentState() {
+    const hasContent = this.inputText().trim().length > 0 || this.pendingAttachments().length > 0;
+    this.hasText.set(hasContent);
   }
 
   // ========== Peer Profile Preview ==========
@@ -1094,25 +1532,48 @@ export class ChatRoomComponent implements OnDestroy {
 
   // ========== Send Message ==========
 
-  initiateSendMessage() {
-    const text = this.inputText().trim();
-    if (text.length === 0) return;
+  async initiateSendMessage() {
+    const rawText = this.inputText().trim();
+    const attachments = this.pendingAttachments().map(a => ({ ...a }));
+    if (rawText.length === 0 && attachments.length === 0) return;
+    if (this.isUploadingAttachments()) return;
 
     const sourceTextEl = this.messageInput()?.nativeElement;
     if (!sourceTextEl) return;
 
+    let uploadedAttachments = attachments;
+    if (attachments.length > 0) {
+      this.isUploadingAttachments.set(true);
+      try {
+        uploadedAttachments = await this.uploadPendingAttachments(attachments);
+      } catch (err) {
+        console.error('Failed to upload attachment(s):', err);
+        this.isUploadingAttachments.set(false);
+        return;
+      }
+      this.isUploadingAttachments.set(false);
+    }
+
+    const finalText = this.buildAttachmentSummaryText(rawText, uploadedAttachments);
+    const transientUrls = attachments.map(a => a.url);
     this.inputText.set('');
-    this.hasText.set(false);
+    this.pendingAttachments.set([]);
+    this.pendingAttachmentFiles.clear();
+    for (const url of transientUrls) {
+      this.revokeTransientUrl(url);
+    }
+    this.updateHasContentState();
     sourceTextEl.style.height = 'auto';
     sourceTextEl.focus();
 
-    const tempId = 'm_' + Math.random().toString(36).substring(2, 9);
+    const tempId = this.randomId('m');
     const reply = this.replyingTo();
     const newMsg: Message = {
       id: tempId,
       chatId: this.chatId,
       senderId: this.chatService.currentUser().id,
-      text: text,
+      text: finalText,
+      attachments: uploadedAttachments.length > 0 ? uploadedAttachments.map(a => ({ ...a })) : undefined,
       timestamp: Date.now(),
       status: 'sending',
       isAnimating: true,
@@ -1128,11 +1589,11 @@ export class ChatRoomComponent implements OnDestroy {
       this.scrollToBottom();
       const targetPlaceholderEl = document.getElementById('msg-' + tempId);
       
-      if (targetPlaceholderEl && sourceTextEl) {
+      if (rawText.length > 0 && targetPlaceholderEl && sourceTextEl) {
         await this.animationService.animateSendText({
           sourceTextEl,
           targetPlaceholderEl,
-          text,
+          text: rawText,
           isMine: true
         });
       }

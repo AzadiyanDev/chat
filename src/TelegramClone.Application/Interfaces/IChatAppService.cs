@@ -9,4 +9,5 @@ public interface IChatAppService
     Task<ChatDto> CreateChatAsync(CreateChatDto dto, Guid creatorId);
     Task<bool> PinChatAsync(Guid chatId, Guid userId, bool isPinned);
     Task<IEnumerable<ChatListItemDto>> SearchChatsAsync(Guid userId, string query);
+    Task<ChatDto> GetOrCreateSavedMessagesAsync(Guid userId);
 }

@@ -4,5 +4,6 @@ public enum ChatType
 {
     Direct,
     Group,
-    Channel
+    Channel,
+    SavedMessages
 }

@@ -31,12 +31,13 @@ public static class DependencyInjection
         .AddEntityFrameworkStores<TelegramDbContext>()
         .AddDefaultTokenProviders();
 
-        // Cookie config
+        // Cookie config — HARDENED
         services.ConfigureApplicationCookie(options =>
         {
             options.Cookie.HttpOnly = true;
-            options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
-            options.ExpireTimeSpan = TimeSpan.FromDays(30);
+            options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.Always;
+            options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Strict;
+            options.ExpireTimeSpan = TimeSpan.FromHours(12);
             options.SlidingExpiration = true;
             options.LoginPath = "/api/auth/unauthorized";
             options.AccessDeniedPath = "/api/auth/forbidden";
@@ -58,6 +59,11 @@ public static class DependencyInjection
         // Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddSingleton<IFileStorageService>(new LocalFileStorageService(uploadPath));
+
+        // E2EE encrypted attachment service (needs storage path)
+        services.AddScoped<IEncryptedAttachmentService>(sp =>
+            new TelegramClone.Application.Services.EncryptedAttachmentService(
+                sp.GetRequiredService<IUnitOfWork>(), uploadPath));
 
         return services;
     }

@@ -1,0 +1,72 @@
+{
+  "configVersion": 1,
+  "timestamp": 1771621395260,
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "/chunk-2DZFZTHZ.js",
+        "/chunk-E6TGZIGP.js",
+        "/chunk-FJZN4QFD.js",
+        "/chunk-IWAD6R2N.js",
+        "/chunk-MLBTRJRA.js",
+        "/chunk-MOSGNJTJ.js",
+        "/chunk-TGBLHORS.js",
+        "/chunk-UQYD26KG.js",
+        "/index.html",
+        "/main-DJRMERPB.js",
+        "/styles-X5MIWCTQ.css"
+      ],
+      "patterns": []
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [],
+      "patterns": []
+    }
+  ],
+  "dataGroups": [],
+  "hashTable": {
+    "/chunk-2DZFZTHZ.js": "8684ab3869303302ec4722f839667b9800a4e6d3",
+    "/chunk-E6TGZIGP.js": "4fc348d3f573d1d5991c00bfb21fa44fd356a378",
+    "/chunk-FJZN4QFD.js": "f85685b0784976dd0185f4109c915a6aa2a97d38",
+    "/chunk-IWAD6R2N.js": "86c188a1779de9cc9a123ee0ead7065526befe08",
+    "/chunk-MLBTRJRA.js": "cd25528187ecab8b235f1f9cb2bfb5aa8d313299",
+    "/chunk-MOSGNJTJ.js": "a44fee8e182745661d13e98446e5359ff6585028",
+    "/chunk-TGBLHORS.js": "4e3f72841486f17021021cb3e0f3a555c11645ad",
+    "/chunk-UQYD26KG.js": "cb47c873496ea38dd6444b4f045605f977134352",
+    "/index.html": "c4fd17ff91c6299609e59fa8119d019b070b5d9d",
+    "/main-DJRMERPB.js": "ff03e67494b076bb0f9122d49f866bbb20e900f6",
+    "/styles-X5MIWCTQ.css": "c9c9c0e4a37b8db2e492a9aff88377dc50c09f99"
+  },
+  "navigationUrls": [
+    {
+      "positive": true,
+      "regex": "^\\/.*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*\\.[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*\\/.*$"
+    }
+  ],
+  "navigationRequestStrategy": "performance"
+}

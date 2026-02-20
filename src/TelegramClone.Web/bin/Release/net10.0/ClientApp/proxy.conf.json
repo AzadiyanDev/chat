@@ -1,0 +1,18 @@
+{
+  "/api": {
+    "target": "https://localhost:5001",
+    "secure": false,
+    "changeOrigin": true
+  },
+  "/chatHub": {
+    "target": "https://localhost:5001",
+    "secure": false,
+    "ws": true,
+    "changeOrigin": true
+  },
+  "/uploads": {
+    "target": "https://localhost:5001",
+    "secure": false,
+    "changeOrigin": true
+  }
+}

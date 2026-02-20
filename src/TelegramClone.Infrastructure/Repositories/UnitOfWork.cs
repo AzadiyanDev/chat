@@ -12,6 +12,12 @@ public class UnitOfWork : IUnitOfWork
     public IMessageRepository Messages { get; }
     public IReactionRepository Reactions { get; }
 
+    // E2EE repositories
+    public IDeviceRepository Devices { get; }
+    public IKeyBundleRepository KeyBundles { get; }
+    public IMessageEnvelopeRepository Envelopes { get; }
+    public IEncryptedAttachmentRepository EncryptedAttachments { get; }
+
     public UnitOfWork(TelegramDbContext context)
     {
         _context = context;
@@ -19,6 +25,12 @@ public class UnitOfWork : IUnitOfWork
         Chats = new ChatRepository(context);
         Messages = new MessageRepository(context);
         Reactions = new ReactionRepository(context);
+
+        // E2EE repositories
+        Devices = new DeviceRepository(context);
+        KeyBundles = new KeyBundleRepository(context);
+        Envelopes = new MessageEnvelopeRepository(context);
+        EncryptedAttachments = new EncryptedAttachmentRepository(context);
     }
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();

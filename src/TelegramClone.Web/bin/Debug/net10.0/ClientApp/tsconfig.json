@@ -24,7 +24,11 @@
     }
   },
   "files": [
-    "./main.ts"
+    "./main.ts",
+    "./src/types/argon2-browser.d.ts"
+  ],
+  "include": [
+    "src/types/**/*.d.ts"
   ],
   "angularCompilerOptions": {
     "disableTypeScriptVersionCheck": true

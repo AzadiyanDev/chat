@@ -250,6 +250,147 @@ namespace TelegramClone.Infrastructure.Migrations
                     b.ToTable("ChatParticipants");
                 });
 
+            modelBuilder.Entity("TelegramClone.Domain.Entities.DeviceRegistration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DeviceName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastActiveAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "DeviceId")
+                        .IsUnique();
+
+                    b.ToTable("DeviceRegistrations");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.EncryptedAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ChunksUploaded")
+                        .HasColumnType("int");
+
+                    b.Property<long>("CiphertextSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsComplete")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("TotalChunks")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UploaderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UploaderId");
+
+                    b.ToTable("EncryptedAttachments");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.IdentityKeyRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("PublicIdentityKey")
+                        .IsRequired()
+                        .HasMaxLength(33)
+                        .HasColumnType("varbinary(33)");
+
+                    b.Property<int>("RegistrationId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "DeviceId")
+                        .IsUnique();
+
+                    b.ToTable("IdentityKeys");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.KyberPreKeyRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("KeyId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(1600)
+                        .HasColumnType("varbinary(1600)");
+
+                    b.Property<byte[]>("Signature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varbinary(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "DeviceId", "KeyId")
+                        .IsUnique();
+
+                    b.ToTable("KyberPreKeys");
+                });
+
             modelBuilder.Entity("TelegramClone.Domain.Entities.Message", b =>
                 {
                     b.Property<Guid>("Id")
@@ -289,6 +430,82 @@ namespace TelegramClone.Infrastructure.Migrations
                     b.ToTable("Messages");
                 });
 
+            modelBuilder.Entity("TelegramClone.Domain.Entities.MessageEnvelope", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<int>("DestinationDeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("DestinationUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDelivered")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ServerTimestamp")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("SourceDeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SourceUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("DestinationUserId", "DestinationDeviceId", "IsDelivered");
+
+                    b.ToTable("MessageEnvelopes");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.OneTimePreKeyRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsConsumed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("KeyId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(33)
+                        .HasColumnType("varbinary(33)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "DeviceId", "IsConsumed");
+
+                    b.HasIndex("UserId", "DeviceId", "KeyId")
+                        .IsUnique();
+
+                    b.ToTable("OneTimePreKeys");
+                });
+
             modelBuilder.Entity("TelegramClone.Domain.Entities.Reaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -316,6 +533,42 @@ namespace TelegramClone.Infrastructure.Migrations
                     b.ToTable("Reactions");
                 });
 
+            modelBuilder.Entity("TelegramClone.Domain.Entities.SignedPreKeyRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("KeyId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(33)
+                        .HasColumnType("varbinary(33)");
+
+                    b.Property<byte[]>("Signature")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varbinary(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "DeviceId", "KeyId")
+                        .IsUnique();
+
+                    b.ToTable("SignedPreKeys");
+                });
+
             modelBuilder.Entity("TelegramClone.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -323,8 +576,7 @@ namespace TelegramClone.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("AvatarUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Bio")
                         .HasMaxLength(500)
@@ -544,6 +796,50 @@ namespace TelegramClone.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("TelegramClone.Domain.Entities.DeviceRegistration", b =>
+                {
+                    b.HasOne("TelegramClone.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.EncryptedAttachment", b =>
+                {
+                    b.HasOne("TelegramClone.Domain.Entities.User", "Uploader")
+                        .WithMany()
+                        .HasForeignKey("UploaderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Uploader");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.IdentityKeyRecord", b =>
+                {
+                    b.HasOne("TelegramClone.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.KyberPreKeyRecord", b =>
+                {
+                    b.HasOne("TelegramClone.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TelegramClone.Domain.Entities.Message", b =>
                 {
                     b.HasOne("TelegramClone.Domain.Entities.Chat", "Chat")
@@ -570,6 +866,28 @@ namespace TelegramClone.Infrastructure.Migrations
                     b.Navigation("Sender");
                 });
 
+            modelBuilder.Entity("TelegramClone.Domain.Entities.MessageEnvelope", b =>
+                {
+                    b.HasOne("TelegramClone.Domain.Entities.User", "DestinationUser")
+                        .WithMany()
+                        .HasForeignKey("DestinationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DestinationUser");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.OneTimePreKeyRecord", b =>
+                {
+                    b.HasOne("TelegramClone.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TelegramClone.Domain.Entities.Reaction", b =>
                 {
                     b.HasOne("TelegramClone.Domain.Entities.Message", "Message")
@@ -585,6 +903,17 @@ namespace TelegramClone.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Message");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TelegramClone.Domain.Entities.SignedPreKeyRecord", b =>
+                {
+                    b.HasOne("TelegramClone.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

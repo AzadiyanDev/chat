@@ -17,6 +17,15 @@ public class TelegramDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<VoiceNote> VoiceNotes => Set<VoiceNote>();
     public DbSet<Reaction> Reactions => Set<Reaction>();
 
+    // E2EE tables — server stores only public keys and ciphertext
+    public DbSet<DeviceRegistration> DeviceRegistrations => Set<DeviceRegistration>();
+    public DbSet<IdentityKeyRecord> IdentityKeys => Set<IdentityKeyRecord>();
+    public DbSet<SignedPreKeyRecord> SignedPreKeys => Set<SignedPreKeyRecord>();
+    public DbSet<KyberPreKeyRecord> KyberPreKeys => Set<KyberPreKeyRecord>();
+    public DbSet<OneTimePreKeyRecord> OneTimePreKeys => Set<OneTimePreKeyRecord>();
+    public DbSet<MessageEnvelope> MessageEnvelopes => Set<MessageEnvelope>();
+    public DbSet<EncryptedAttachment> EncryptedAttachments => Set<EncryptedAttachment>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -28,7 +37,7 @@ public class TelegramDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Username).HasMaxLength(50);
             entity.Property(e => e.Bio).HasMaxLength(500);
-            entity.Property(e => e.AvatarUrl).HasMaxLength(500);
+            entity.Property(e => e.AvatarUrl).HasColumnType("nvarchar(max)");
             entity.Property(e => e.IdentityUserId).HasMaxLength(450);
             entity.HasIndex(e => e.IdentityUserId).IsUnique();
             entity.HasIndex(e => e.Username).IsUnique().HasFilter("[Username] IS NOT NULL");
@@ -129,6 +138,106 @@ public class TelegramDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => new { e.MessageId, e.UserId, e.Emoji }).IsUnique();
+        });
+
+        // ════════════════════════════════════════════
+        // E2EE ENTITIES — ciphertext-only server
+        // ════════════════════════════════════════════
+
+        // DeviceRegistration
+        builder.Entity<DeviceRegistration>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.DeviceName).HasMaxLength(200);
+            entity.HasIndex(e => new { e.UserId, e.DeviceId }).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // IdentityKeyRecord
+        builder.Entity<IdentityKeyRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PublicIdentityKey).HasMaxLength(33).IsRequired();
+            entity.HasIndex(e => new { e.UserId, e.DeviceId }).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // SignedPreKeyRecord
+        builder.Entity<SignedPreKeyRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PublicKey).HasMaxLength(33).IsRequired();
+            entity.Property(e => e.Signature).HasMaxLength(64).IsRequired();
+            entity.HasIndex(e => new { e.UserId, e.DeviceId, e.KeyId }).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // KyberPreKeyRecord (Post-Quantum)
+        builder.Entity<KyberPreKeyRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PublicKey).HasMaxLength(1600).IsRequired(); // ML-KEM-1024 ≈ 1568 bytes
+            entity.Property(e => e.Signature).HasMaxLength(64).IsRequired();
+            entity.HasIndex(e => new { e.UserId, e.DeviceId, e.KeyId }).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // OneTimePreKeyRecord
+        builder.Entity<OneTimePreKeyRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PublicKey).HasMaxLength(33).IsRequired();
+            entity.HasIndex(e => new { e.UserId, e.DeviceId, e.KeyId }).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.DeviceId, e.IsConsumed });
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // MessageEnvelope — encrypted message queue
+        builder.Entity<MessageEnvelope>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Content).IsRequired(); // VARBINARY(MAX) for encrypted payload
+            entity.HasIndex(e => new { e.DestinationUserId, e.DestinationDeviceId, e.IsDelivered });
+            entity.HasIndex(e => e.ExpiresAt);
+
+            entity.HasOne(e => e.DestinationUser)
+                .WithMany()
+                .HasForeignKey(e => e.DestinationUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // EncryptedAttachment — ciphertext blob metadata
+        builder.Entity<EncryptedAttachment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StoragePath).HasMaxLength(500).IsRequired();
+            entity.HasIndex(e => e.UploaderId);
+            entity.HasIndex(e => e.ExpiresAt);
+
+            entity.HasOne(e => e.Uploader)
+                .WithMany()
+                .HasForeignKey(e => e.UploaderId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

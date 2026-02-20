@@ -1,0 +1,16 @@
+D:\Projects\chat\src\TelegramClone.Application\bin\Release\net10.0\TelegramClone.Application.deps.json
+D:\Projects\chat\src\TelegramClone.Application\bin\Release\net10.0\TelegramClone.Application.dll
+D:\Projects\chat\src\TelegramClone.Application\bin\Release\net10.0\TelegramClone.Application.pdb
+D:\Projects\chat\src\TelegramClone.Application\bin\Release\net10.0\TelegramClone.Domain.dll
+D:\Projects\chat\src\TelegramClone.Application\bin\Release\net10.0\TelegramClone.Domain.pdb
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.csproj.AssemblyReference.cache
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.GeneratedMSBuildEditorConfig.editorconfig
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.AssemblyInfoInputs.cache
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.AssemblyInfo.cs
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.csproj.CoreCompileInputs.cache
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.sourcelink.json
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\Telegram.F8296CF3.Up2Date
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.dll
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\refint\TelegramClone.Application.dll
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\TelegramClone.Application.pdb
+D:\Projects\chat\src\TelegramClone.Application\obj\Release\net10.0\ref\TelegramClone.Application.dll

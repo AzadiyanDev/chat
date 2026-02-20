@@ -38,6 +38,15 @@ public class ChatRepository : Repository<Chat>, IChatRepository
             .FirstOrDefaultAsync();
     }
 
+    public async Task<Chat?> GetSavedMessagesChatAsync(Guid userId)
+    {
+        return await _dbSet
+            .Include(c => c.Participants).ThenInclude(p => p.User)
+            .Where(c => c.Type == ChatType.SavedMessages)
+            .Where(c => c.Participants.Any(p => p.UserId == userId))
+            .FirstOrDefaultAsync();
+    }
+
     public async Task<IEnumerable<Chat>> SearchChatsAsync(Guid userId, string query)
     {
         return await _dbSet

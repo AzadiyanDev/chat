@@ -26,6 +26,16 @@ public class ChatHub : Hub
         return user?.Id;
     }
 
+    /// <summary>
+    /// Verify that the current user is a participant of the given chat.
+    /// </summary>
+    private async Task<bool> IsUserInChatAsync(Guid userId, string chatId)
+    {
+        if (!Guid.TryParse(chatId, out var chatGuid)) return false;
+        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatGuid);
+        return chat?.Participants.Any(p => p.UserId == userId) ?? false;
+    }
+
     public override async Task OnConnectedAsync()
     {
         var userId = await GetDomainUserIdAsync();
@@ -40,6 +50,9 @@ public class ChatHub : Hub
                 await Groups.AddToGroupAsync(Context.ConnectionId, chat.Id.ToString());
             }
 
+            // Register user connection for E2EE envelope notifications
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId.Value}");
+
             // Notify others
             await Clients.Others.SendAsync("UserOnline", userId.Value);
         }
@@ -53,6 +66,7 @@ public class ChatHub : Hub
         if (userId.HasValue)
         {
             await _userService.SetOnlineStatusAsync(userId.Value, false);
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"user_{userId.Value}");
             await Clients.Others.SendAsync("UserOffline", userId.Value);
         }
 
@@ -60,10 +74,16 @@ public class ChatHub : Hub
     }
 
     /// <summary>
-    /// Join a specific chat group (e.g., when navigating to a chat).
+    /// Join a specific chat group — with membership verification.
     /// </summary>
     public async Task JoinChat(string chatId)
     {
+        var userId = await GetDomainUserIdAsync();
+        if (userId == null) return;
+
+        // Security: verify user is a participant of this chat
+        if (!await IsUserInChatAsync(userId.Value, chatId)) return;
+
         await Groups.AddToGroupAsync(Context.ConnectionId, chatId);
     }
 
@@ -76,42 +96,68 @@ public class ChatHub : Hub
     }
 
     /// <summary>
-    /// Broadcast typing indicator to a chat.
+    /// Broadcast typing indicator to a chat — with membership verification.
     /// </summary>
     public async Task StartTyping(string chatId)
     {
         var userId = await GetDomainUserIdAsync();
-        if (userId.HasValue)
-        {
-            await Clients.OthersInGroup(chatId).SendAsync("UserTyping", chatId, userId.Value);
-        }
+        if (userId == null) return;
+
+        if (!await IsUserInChatAsync(userId.Value, chatId)) return;
+        await Clients.OthersInGroup(chatId).SendAsync("UserTyping", chatId, userId.Value);
     }
 
     /// <summary>
-    /// Stop typing indicator.
+    /// Stop typing indicator — with membership verification.
     /// </summary>
     public async Task StopTyping(string chatId)
     {
         var userId = await GetDomainUserIdAsync();
-        if (userId.HasValue)
-        {
-            await Clients.OthersInGroup(chatId).SendAsync("UserStoppedTyping", chatId, userId.Value);
-        }
+        if (userId == null) return;
+
+        if (!await IsUserInChatAsync(userId.Value, chatId)) return;
+        await Clients.OthersInGroup(chatId).SendAsync("UserStoppedTyping", chatId, userId.Value);
     }
 
     /// <summary>
-    /// Mark messages as delivered.
+    /// Mark messages as delivered — with membership verification.
     /// </summary>
     public async Task MessageDelivered(string chatId, string messageId)
     {
+        var userId = await GetDomainUserIdAsync();
+        if (userId == null) return;
+
+        if (!await IsUserInChatAsync(userId.Value, chatId)) return;
         await Clients.OthersInGroup(chatId).SendAsync("MessageStatusChanged", messageId, "Delivered");
     }
 
     /// <summary>
-    /// Mark messages as seen.
+    /// Mark messages as seen — with membership verification.
     /// </summary>
     public async Task MessageSeen(string chatId, string messageId)
     {
+        var userId = await GetDomainUserIdAsync();
+        if (userId == null) return;
+
+        if (!await IsUserInChatAsync(userId.Value, chatId)) return;
         await Clients.OthersInGroup(chatId).SendAsync("MessageStatusChanged", messageId, "Seen");
+    }
+
+    // ──── E2EE Notifications ────
+
+    /// <summary>
+    /// Notify a user that their key bundle has changed (e.g., key rotation, new device).
+    /// Contacts should re-verify safety numbers.
+    /// </summary>
+    public async Task NotifyKeyChange(string targetUserId)
+    {
+        var userId = await GetDomainUserIdAsync();
+        if (userId == null) return;
+
+        await Clients.Group($"user_{targetUserId}").SendAsync("KeyBundleChanged", new
+        {
+            userId = userId.Value,
+            timestamp = DateTime.UtcNow
+        });
     }
 }

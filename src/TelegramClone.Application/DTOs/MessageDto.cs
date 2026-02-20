@@ -24,6 +24,16 @@ public class SendMessageDto
 {
     public string? Text { get; set; }
     public Guid? ReplyToId { get; set; }
+    public List<SendAttachmentDto> Attachments { get; set; } = new();
+}
+
+public class SendAttachmentDto
+{
+    public AttachmentType Type { get; set; }
+    public string Url { get; set; } = string.Empty;
+    public string? Name { get; set; }
+    public long? Size { get; set; }
+    public string? ThumbnailUrl { get; set; }
 }
 
 public class AttachmentDto

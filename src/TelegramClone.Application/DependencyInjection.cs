@@ -13,9 +13,15 @@ public static class DependencyInjection
         services.AddAutoMapper(typeof(MappingProfile));
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
+        // Existing services
         services.AddScoped<IChatAppService, ChatAppService>();
         services.AddScoped<IMessageAppService, MessageAppService>();
         services.AddScoped<IUserAppService, UserAppService>();
+
+        // E2EE services
+        services.AddScoped<IDeviceService, DeviceService>();
+        services.AddScoped<IKeyBundleService, KeyBundleService>();
+        services.AddScoped<IMessageEnvelopeService, MessageEnvelopeService>();
 
         return services;
     }

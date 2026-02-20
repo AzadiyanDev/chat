@@ -15,6 +15,8 @@ export class SignalRService {
   private onlineHandlers: ((userId: string) => void)[] = [];
   private offlineHandlers: ((userId: string) => void)[] = [];
   private statusHandlers: ((messageId: string, status: string) => void)[] = [];
+  private envelopeReadyHandlers: (() => void)[] = [];
+  private keyChangeHandlers: ((userId: string, deviceId: number) => void)[] = [];
 
   async start(): Promise<void> {
     if (this.connection) return;
@@ -59,6 +61,14 @@ export class SignalRService {
 
       this.connection.on('MessageStatusChanged', (messageId: string, status: string) => {
         this.statusHandlers.forEach(h => h(messageId, status));
+      });
+
+      this.connection.on('EnvelopeReady', () => {
+        this.envelopeReadyHandlers.forEach(h => h());
+      });
+
+      this.connection.on('KeyChange', (userId: string, deviceId: number) => {
+        this.keyChangeHandlers.forEach(h => h(userId, deviceId));
       });
 
       this.connection.onreconnected(() => {
@@ -163,5 +173,15 @@ export class SignalRService {
   onMessageStatusChanged(handler: (messageId: string, status: string) => void): () => void {
     this.statusHandlers.push(handler);
     return () => { this.statusHandlers = this.statusHandlers.filter(h => h !== handler); };
+  }
+
+  onEnvelopeReady(handler: () => void): () => void {
+    this.envelopeReadyHandlers.push(handler);
+    return () => { this.envelopeReadyHandlers = this.envelopeReadyHandlers.filter(h => h !== handler); };
+  }
+
+  onKeyChange(handler: (userId: string, deviceId: number) => void): () => void {
+    this.keyChangeHandlers.push(handler);
+    return () => { this.keyChangeHandlers = this.keyChangeHandlers.filter(h => h !== handler); };
   }
 }

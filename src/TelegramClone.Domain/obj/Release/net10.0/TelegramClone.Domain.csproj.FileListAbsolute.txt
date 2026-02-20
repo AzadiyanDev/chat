@@ -1,0 +1,12 @@
+D:\Projects\chat\src\TelegramClone.Domain\bin\Release\net10.0\TelegramClone.Domain.deps.json
+D:\Projects\chat\src\TelegramClone.Domain\bin\Release\net10.0\TelegramClone.Domain.dll
+D:\Projects\chat\src\TelegramClone.Domain\bin\Release\net10.0\TelegramClone.Domain.pdb
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\TelegramClone.Domain.GeneratedMSBuildEditorConfig.editorconfig
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\TelegramClone.Domain.AssemblyInfoInputs.cache
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\TelegramClone.Domain.AssemblyInfo.cs
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\TelegramClone.Domain.csproj.CoreCompileInputs.cache
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\TelegramClone.Domain.sourcelink.json
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\TelegramClone.Domain.dll
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\refint\TelegramClone.Domain.dll
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\TelegramClone.Domain.pdb
+D:\Projects\chat\src\TelegramClone.Domain\obj\Release\net10.0\ref\TelegramClone.Domain.dll

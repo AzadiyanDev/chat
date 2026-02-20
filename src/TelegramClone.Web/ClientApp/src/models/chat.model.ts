@@ -48,7 +48,7 @@ export interface Message {
 
 export interface Chat {
   id: string;
-  type: 'direct' | 'group' | 'channel';
+  type: 'direct' | 'group' | 'channel' | 'saved';
   participants: User[];
   lastMessage?: Message;
   unreadCount: number;

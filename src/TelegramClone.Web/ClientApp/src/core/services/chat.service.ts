@@ -1,5 +1,5 @@
 import { Injectable, signal, computed, inject, effect } from '@angular/core';
-import { Chat, Message, User, Reaction } from '../../models/chat.model';
+import { Chat, Message, User, Reaction, Attachment } from '../../models/chat.model';
 import { VoiceStorageService } from './voice-storage.service';
 import { AudioService } from './audio.service';
 import { ApiService } from './api.service';
@@ -7,7 +7,39 @@ import { AuthService } from './auth.service';
 import { SignalRService } from './signalr.service';
 
 const STATUS_MAP: Record<number, Message['status']> = { 0: 'sending', 1: 'sent', 2: 'delivered', 3: 'seen' };
-const TYPE_MAP: Record<number, Chat['type']> = { 0: 'direct', 1: 'group', 2: 'channel' };
+const TYPE_MAP: Record<number, Chat['type']> = { 0: 'direct', 1: 'group', 2: 'channel', 3: 'saved' };
+const STATUS_STRING_MAP: Record<string, Message['status']> = {
+  sending: 'sending',
+  sent: 'sent',
+  delivered: 'delivered',
+  seen: 'seen'
+};
+const TYPE_STRING_MAP: Record<string, Chat['type']> = {
+  direct: 'direct',
+  group: 'group',
+  channel: 'channel',
+  saved: 'saved',
+  savedmessages: 'saved',
+  saved_messages: 'saved'
+};
+const ATTACHMENT_TYPE_MAP: Record<number, Attachment['type']> = {
+  0: 'image',
+  1: 'video',
+  2: 'audio',
+  3: 'document'
+};
+const ATTACHMENT_TYPE_STRING_MAP: Record<string, Attachment['type']> = {
+  image: 'image',
+  video: 'video',
+  audio: 'audio',
+  document: 'document'
+};
+const ATTACHMENT_TYPE_TO_API: Record<Attachment['type'], 'Image' | 'Video' | 'Audio' | 'Document'> = {
+  image: 'Image',
+  video: 'Video',
+  audio: 'Audio',
+  document: 'Document'
+};
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
@@ -59,10 +91,10 @@ export class ChatService {
     this.hub.onMessage((raw: any) => {
       const message = this.mapMessage(raw);
       // Skip our own messages (already added optimistically)
-      if (message.senderId === this.currentUser().id) return;
-      this.messages.update(msgs => [...msgs, message]);
+      if (this.sameId(message.senderId, this.currentUser().id)) return;
+      this.messages.update(msgs => this.upsertMessages(msgs, [message]));
       this.chats.update(chats => chats.map(c =>
-        c.id === message.chatId
+        this.sameId(c.id, message.chatId)
           ? { ...c, lastMessage: message, unreadCount: c.unreadCount + 1 }
           : c
       ));
@@ -90,7 +122,7 @@ export class ChatService {
     this.hub.onUserOffline((userId) => this.updateUserOnlineStatus(userId, false));
 
     this.hub.onMessageStatusChanged((messageId, status) => {
-      this.updateMessage(messageId, { status: status as Message['status'] });
+      this.updateMessage(messageId, { status: this.normalizeMessageStatus(status) });
     });
   }
 
@@ -102,7 +134,30 @@ export class ChatService {
     try {
       const raw = await this.api.getChats().toPromise();
       if (!raw) return;
-      const chats = raw.map((c: any) => this.mapChat(c));
+      let chats = this.keepSingleSavedChat(this.dedupeChatsById(raw.map((c: any) => this.mapChat(c))));
+
+      // Ensure Saved Messages chat exists and is at the top
+      let hasSaved = chats.some(c => c.type === 'saved');
+      if (!hasSaved) {
+        try {
+          const savedRaw = await this.api.getSavedMessagesChat().toPromise();
+          if (savedRaw) {
+            const savedChat = this.mapChat(savedRaw);
+            chats = this.keepSingleSavedChat(this.dedupeChatsById([savedChat, ...chats]), savedChat.id);
+            hasSaved = true;
+          }
+        } catch { /* ignore — server might not support it yet */ }
+      }
+
+      // Sort: saved first, then pinned, then by last message time
+      chats.sort((a, b) => {
+        if (a.type === 'saved' && b.type !== 'saved') return -1;
+        if (b.type === 'saved' && a.type !== 'saved') return 1;
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return this.getChatActivityTimestamp(b) - this.getChatActivityTimestamp(a);
+      });
+
       this.chats.set(chats);
 
       // Cache every participant for getUserById
@@ -129,7 +184,11 @@ export class ChatService {
       const raw = await this.api.getMessages(chatId).toPromise();
       if (!raw) return;
       const incoming = raw.map((m: any) => this.mapMessage(m));
-      this.messages.update(msgs => [...msgs.filter(m => m.chatId !== chatId), ...incoming]);
+      this.messages.update(msgs => {
+        const sameChat = msgs.filter(m => this.sameId(m.chatId, chatId));
+        const otherChats = msgs.filter(m => !this.sameId(m.chatId, chatId));
+        return [...otherChats, ...this.upsertMessages(sameChat, incoming)];
+      });
       this.restoreVoiceUrls(chatId);
     } catch (err) {
       console.error('Failed to load messages for', chatId, err);
@@ -144,7 +203,7 @@ export class ChatService {
   private mapChat(d: any): Chat {
     return {
       id: String(d.id),
-      type: typeof d.type === 'number' ? (TYPE_MAP[d.type] ?? 'direct') : (d.type || 'direct'),
+      type: this.normalizeChatType(d.type),
       participants: (d.participants || []).map((p: any) => this.mapUser(p)),
       lastMessage: d.lastMessage ? this.mapMessage(d.lastMessage) : undefined,
       unreadCount: d.unreadCount ?? 0,
@@ -164,8 +223,15 @@ export class ChatService {
       senderId: String(d.senderId),
       text: d.text,
       timestamp: d.timestamp ? new Date(d.timestamp).getTime() : Date.now(),
-      status: typeof d.status === 'number' ? (STATUS_MAP[d.status] ?? 'sent') : (d.status || 'sent'),
-      attachments: d.attachments,
+      status: this.normalizeMessageStatus(d.status),
+      attachments: (d.attachments || []).map((a: any) => ({
+        id: String(a.id ?? ''),
+        type: this.normalizeAttachmentType(a.type),
+        url: String(a.url ?? ''),
+        name: a.name ?? undefined,
+        size: typeof a.size === 'number' ? a.size : undefined,
+        thumbnailUrl: a.thumbnailUrl ?? undefined
+      })),
       voice: d.voice ? {
         url: d.voice.url || '',
         duration: d.voice.duration || 0,
@@ -199,7 +265,7 @@ export class ChatService {
   // ═══════════════════════════════════════════
 
   getChatById(chatId: string): Chat | undefined {
-    return this.chats().find(c => c.id === chatId);
+    return this.chats().find(c => this.sameId(c.id, chatId));
   }
 
   getMessagesForChat(chatId: string) {
@@ -207,49 +273,76 @@ export class ChatService {
     this.ensureMessagesLoaded(chatId);
     return computed(() =>
       this.messages()
-        .filter(m => m.chatId === chatId && !m.isDeleted)
+        .filter(m => this.sameId(m.chatId, chatId) && !m.isDeleted)
         .sort((a, b) => a.timestamp - b.timestamp)
     );
   }
 
   getMessageById(messageId: string): Message | undefined {
-    return this.messages().find(m => m.id === messageId);
+    return this.messages().find(m => this.sameId(m.id, messageId));
   }
 
   getParticipant(chat: Chat): User | undefined {
-    if (chat.type === 'group' || chat.type === 'channel') return undefined;
-    return chat.participants.find(p => p.id !== this.currentUser().id);
+    if (chat.type === 'group' || chat.type === 'channel' || chat.type === 'saved') return undefined;
+    return chat.participants.find(p => !this.sameId(p.id, this.currentUser().id));
   }
 
   addMessage(message: Message) {
     // Optimistic local add
-    this.messages.update(msgs => [...msgs, message]);
+    this.messages.update(msgs => this.upsertMessages(msgs, [message]));
 
     // Re-order chats (pinned stay on top)
     this.chats.update(chats => {
-      const chatIndex = chats.findIndex(c => c.id === message.chatId);
+      const chatIndex = chats.findIndex(c => this.sameId(c.id, message.chatId));
       if (chatIndex === -1) return chats;
       const updatedChat = { ...chats[chatIndex], lastMessage: message, unreadCount: 0 };
       const newChats = [...chats];
       newChats.splice(chatIndex, 1);
-      const insertIndex = updatedChat.isPinned ? 0 : chats.filter(c => c.isPinned).length;
+      // Saved Messages always first, then pinned, then the rest
+      let insertIndex: number;
+      if (updatedChat.type === 'saved') {
+        insertIndex = 0;
+      } else if (updatedChat.isPinned) {
+        // After saved chat (if present)
+        insertIndex = newChats.findIndex(c => c.type !== 'saved');
+        if (insertIndex === -1) insertIndex = 0;
+      } else {
+        // After all pinned chats
+        insertIndex = newChats.filter(c => c.isPinned || c.type === 'saved').length;
+      }
       newChats.splice(insertIndex, 0, updatedChat);
       return newChats;
     });
 
     // Fire-and-forget API send for own messages
-    if (message.senderId === this.currentUser().id) {
+    if (this.sameId(message.senderId, this.currentUser().id)) {
       this.api.sendMessage(message.chatId, {
         text: message.text,
-        replyToId: message.replyToId
+        replyToId: message.replyToId,
+        attachments: message.attachments?.map(att => this.mapAttachmentForApi(att))
       }).subscribe({
+        next: (raw: any) => {
+          if (!raw) return;
+          const persisted = this.mapMessage(raw);
+
+          this.messages.update(msgs => {
+            const replaced = msgs.map(m => this.sameId(m.id, message.id) ? persisted : m);
+            return this.upsertMessages(replaced, [persisted]);
+          });
+
+          this.chats.update(chats => chats.map(c =>
+            this.sameId(c.id, persisted.chatId)
+              ? { ...c, lastMessage: persisted, unreadCount: 0 }
+              : c
+          ));
+        },
         error: (err: any) => console.error('Failed to send message:', err)
       });
     }
   }
 
   updateMessage(id: string, updates: Partial<Message>) {
-    this.messages.update(msgs => msgs.map(m => m.id === id ? { ...m, ...updates } : m));
+    this.messages.update(msgs => msgs.map(m => this.sameId(m.id, id) ? { ...m, ...updates } : m));
   }
 
   deleteMessage(messageId: string): boolean {
@@ -293,7 +386,7 @@ export class ChatService {
   }
 
   markAsRead(chatId: string) {
-    this.chats.update(chats => chats.map(c => c.id === chatId ? { ...c, unreadCount: 0 } : c));
+    this.chats.update(chats => chats.map(c => this.sameId(c.id, chatId) ? { ...c, unreadCount: 0 } : c));
   }
 
   updateCurrentUserProfile(updates: Partial<Pick<User, 'name' | 'username' | 'bio' | 'avatarUrl'>>) {
@@ -328,7 +421,7 @@ export class ChatService {
   }
 
   getUserById(userId: string): User | undefined {
-    if (userId === this.currentUser().id) return this.currentUser();
+    if (this.sameId(userId, this.currentUser().id)) return this.currentUser();
     return this.usersCache.get(userId);
   }
 
@@ -346,7 +439,7 @@ export class ChatService {
       const chat = this.mapChat(raw);
       // Add or replace in chats list
       this.chats.update(chats => {
-        const existing = chats.find(c => c.id === chat.id);
+        const existing = chats.find(c => this.sameId(c.id, chat.id));
         if (existing) return chats;
         return [chat, ...chats];
       });
@@ -370,7 +463,7 @@ export class ChatService {
   // ═══════════════════════════════════════════
 
   private async restoreVoiceUrls(chatId: string) {
-    const msgs = this.messages().filter(m => m.chatId === chatId);
+    const msgs = this.messages().filter(m => this.sameId(m.chatId, chatId));
     let updated = false;
     for (const m of msgs) {
       if (m.voice && m.voice.storageKey && !m.voice.url) {
@@ -384,6 +477,102 @@ export class ChatService {
     if (updated) this.messages.set([...this.messages()]);
   }
 
+  private normalizeChatType(raw: unknown): Chat['type'] {
+    if (typeof raw === 'number') {
+      return TYPE_MAP[raw] ?? 'direct';
+    }
+    const normalized = String(raw ?? '').trim().toLowerCase();
+    return TYPE_STRING_MAP[normalized] ?? 'direct';
+  }
+
+  private normalizeMessageStatus(raw: unknown): Message['status'] {
+    if (typeof raw === 'number') {
+      return STATUS_MAP[raw] ?? 'sent';
+    }
+    const normalized = String(raw ?? '').trim().toLowerCase();
+    return STATUS_STRING_MAP[normalized] ?? 'sent';
+  }
+
+  private normalizeAttachmentType(raw: unknown): Attachment['type'] {
+    if (typeof raw === 'number') {
+      return ATTACHMENT_TYPE_MAP[raw] ?? 'document';
+    }
+
+    const normalized = String(raw ?? '').trim().toLowerCase();
+    return ATTACHMENT_TYPE_STRING_MAP[normalized] ?? 'document';
+  }
+
+  private mapAttachmentForApi(att: Attachment): {
+    type: 'Image' | 'Video' | 'Audio' | 'Document';
+    url: string;
+    name?: string;
+    size?: number;
+    thumbnailUrl?: string;
+  } {
+    return {
+      type: ATTACHMENT_TYPE_TO_API[att.type] ?? 'Document',
+      url: att.url,
+      name: att.name,
+      size: att.size,
+      thumbnailUrl: att.thumbnailUrl
+    };
+  }
+
+  private normalizeId(value: unknown): string {
+    return String(value ?? '').trim().toLowerCase();
+  }
+
+  private sameId(a: unknown, b: unknown): boolean {
+    return this.normalizeId(a) === this.normalizeId(b);
+  }
+
+  private upsertMessages(current: Message[], incoming: Message[]): Message[] {
+    const mergedById = new Map<string, Message>();
+
+    for (const msg of current) {
+      mergedById.set(this.normalizeId(msg.id), msg);
+    }
+
+    for (const msg of incoming) {
+      const key = this.normalizeId(msg.id);
+      const existing = mergedById.get(key);
+      mergedById.set(key, existing ? { ...existing, ...msg } : msg);
+    }
+
+    return Array.from(mergedById.values());
+  }
+
+  private dedupeChatsById(chats: Chat[]): Chat[] {
+    const seen = new Set<string>();
+    const deduped: Chat[] = [];
+    for (const chat of chats) {
+      const key = this.normalizeId(chat.id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(chat);
+    }
+    return deduped;
+  }
+
+  private keepSingleSavedChat(chats: Chat[], preferredSavedId?: string): Chat[] {
+    const savedChats = chats.filter(c => c.type === 'saved');
+    if (savedChats.length <= 1) return chats;
+
+    const preferred = preferredSavedId
+      ? savedChats.find(c => this.sameId(c.id, preferredSavedId))
+      : undefined;
+
+    const keep = preferred ?? savedChats
+      .slice()
+      .sort((a, b) => this.getChatActivityTimestamp(b) - this.getChatActivityTimestamp(a))[0];
+
+    return chats.filter(c => c.type !== 'saved' || this.sameId(c.id, keep.id));
+  }
+
+  private getChatActivityTimestamp(chat: Chat): number {
+    return chat.lastMessage?.timestamp ?? 0;
+  }
+
   private updateUserOnlineStatus(userId: string, isOnline: boolean) {
     const cached = this.usersCache.get(userId);
     if (cached) {
@@ -392,7 +581,7 @@ export class ChatService {
     this.chats.update(chats => chats.map(chat => ({
       ...chat,
       participants: chat.participants.map(p =>
-        p.id === userId ? { ...p, isOnline, lastSeen: isOnline ? undefined : Date.now() } : p
+        this.sameId(p.id, userId) ? { ...p, isOnline, lastSeen: isOnline ? undefined : Date.now() } : p
       )
     })));
   }

@@ -37,4 +37,15 @@ public class FilesController : ControllerBase
         var path = await _fileStorage.SaveAvatarAsync(stream, file.FileName);
         return Ok(new { url = $"/uploads/{path}" });
     }
+
+    [HttpPost("attachment")]
+    public async Task<IActionResult> UploadAttachment(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("No file provided");
+
+        await using var stream = file.OpenReadStream();
+        var path = await _fileStorage.SaveAttachmentAsync(stream, file.FileName);
+        return Ok(new { url = $"/uploads/{path}" });
+    }
 }

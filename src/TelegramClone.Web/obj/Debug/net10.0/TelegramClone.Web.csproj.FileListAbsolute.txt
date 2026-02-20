@@ -470,3 +470,5 @@ D:\Projects\chat\src\TelegramClone.Web\obj\Debug\net10.0\refint\TelegramClone.We
 D:\Projects\chat\src\TelegramClone.Web\obj\Debug\net10.0\TelegramClone.Web.pdb
 D:\Projects\chat\src\TelegramClone.Web\obj\Debug\net10.0\TelegramClone.Web.genruntimeconfig.cache
 D:\Projects\chat\src\TelegramClone.Web\obj\Debug\net10.0\ref\TelegramClone.Web.dll
+D:\Projects\chat\src\TelegramClone.Web\bin\Debug\net10.0\ClientApp\ngsw-config.json
+D:\Projects\chat\src\TelegramClone.Web\bin\Debug\net10.0\ClientApp\dist\ngsw.json

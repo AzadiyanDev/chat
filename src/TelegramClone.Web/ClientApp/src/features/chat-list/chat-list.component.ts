@@ -4,6 +4,7 @@ import { ChatService } from '../../core/services/chat.service';
 import { ApiService } from '../../core/services/api.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { AnimationService } from '../../core/services/animation.service';
+import { PwaService } from '../../core/services/pwa.service';
 import { AvatarComponent } from '../../shared/components/avatar.component';
 import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component';
 import { ShortTimePipe } from '../../shared/pipes/time.pipe';
@@ -88,26 +89,36 @@ declare var gsap: any;
               [class.bg-telegram-primary-light]="chat.isPinned"
               (click)="openChat(chat.id, $event)"
             >
-              <app-avatar 
-                [src]="chat.type === 'direct' ? participant?.avatarUrl : chat.avatarUrl"
-                [name]="chat.type === 'direct' ? (participant?.name || 'User') : (chat.name || 'Group')"
-                [isOnline]="participant?.isOnline || false"
-              ></app-avatar>
+              @if (chat.type === 'saved') {
+                <div class="relative w-11 h-11 shrink-0">
+                  <div class="w-11 h-11 rounded-full bg-telegram-primary text-white flex items-center justify-center">
+                    <i class="ph-fill ph-bookmark-simple text-xl"></i>
+                  </div>
+                </div>
+              } @else {
+                <app-avatar 
+                  [src]="chat.type === 'direct' ? participant?.avatarUrl : chat.avatarUrl"
+                  [name]="chat.type === 'direct' ? (participant?.name || 'User') : (chat.name || 'Group')"
+                  [isOnline]="participant?.isOnline || false"
+                ></app-avatar>
+              }
               
               <div class="flex-1 min-w-0">
                 <div class="flex justify-between items-center mb-0.5">
                   <div class="flex items-center gap-1.5 min-w-0">
-                    @if (chat.type === 'channel') {
+                    @if (chat.type === 'saved') {
+                      <i class="ph-fill ph-bookmark-simple text-telegram-primary text-sm shrink-0"></i>
+                    } @else if (chat.type === 'channel') {
                       <i class="ph-fill ph-megaphone text-telegram-primary text-sm shrink-0"></i>
                     } @else if (chat.type === 'group') {
                       <i class="ph-fill ph-users-three text-telegram-primary text-sm shrink-0"></i>
                     }
                     <h3 class="font-semibold truncate text-15">
-                      {{ chat.type === 'direct' ? participant?.name : chat.name }}
+                      {{ chat.type === 'saved' ? 'Saved Messages' : (chat.type === 'direct' ? participant?.name : chat.name) }}
                     </h3>
                   </div>
                   <div class="flex items-center gap-1 shrink-0 text-xs text-gray-500 dark:text-telegram-muted tabular-nums">
-                    @if (chat.lastMessage?.senderId === chatService.currentUser().id) {
+                    @if (chat.type !== 'saved' && chat.lastMessage?.senderId === chatService.currentUser().id) {
                       <i class="ph-bold ph-checks text-telegram-primary text-xs"></i>
                     }
                     <span>{{ chat.lastMessage?.timestamp | shortTime }}</span>
@@ -116,7 +127,7 @@ declare var gsap: any;
                 
                 <div class="flex justify-between items-center">
                   <p class="text-13 text-gray-500 dark:text-telegram-muted truncate flex-1 mr-3">
-                    @if (typingUsers.length > 0) {
+                    @if (chat.type !== 'saved' && typingUsers.length > 0) {
                       <span class="text-telegram-primary font-medium">typing
                         <span class="inline-flex gap-0.5 ml-0.5">
                           <span class="w-1 h-1 rounded-full bg-telegram-primary animate-typing-dot-1 inline-block"></span>
@@ -125,7 +136,7 @@ declare var gsap: any;
                         </span>
                       </span>
                     } @else {
-                      @if (chat.lastMessage?.senderId === chatService.currentUser().id) {
+                      @if (chat.type !== 'saved' && chat.lastMessage?.senderId === chatService.currentUser().id) {
                         <span class="text-black dark:text-white opacity-70 mr-0.5">You:</span>
                       } @else if (chat.type === 'group' || chat.type === 'channel') {
                         @let senderName = chatService.getUserById(chat.lastMessage?.senderId || '')?.name;
@@ -349,6 +360,35 @@ declare var gsap: any;
         </div>
       }
 
+      <!-- Install PWA Banner -->
+      @if (pwa.canInstall()) {
+        <div class="fixed bottom-24 left-4 right-4 z-20 flex items-center gap-3 px-4 py-3 bg-white/90 dark:bg-telegram-surface rounded-2xl border border-gray-200 dark:border-gray-700/50 shadow-xl" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+          <div class="w-10 h-10 rounded-xl bg-telegram-primary text-white flex items-center justify-center shrink-0">
+            <i class="ph-fill ph-download-simple text-xl"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold">Install AzadiyanChat</div>
+            <div class="text-xs text-telegram-muted">Add to home screen for the best experience</div>
+          </div>
+          <button (click)="pwa.promptInstall()" class="px-3 py-1.5 rounded-xl bg-telegram-primary text-white text-xs font-semibold shrink-0 active:scale-95 transition-transform">Install</button>
+          <button (click)="pwa.canInstall.set(false)" class="p-1 text-gray-400 hover:text-gray-600 transition-colors shrink-0">
+            <i class="ph ph-x text-sm"></i>
+          </button>
+        </div>
+      }
+
+      <!-- Update Available Banner -->
+      @if (pwa.updateAvailable()) {
+        <div class="fixed top-20 left-4 right-4 z-30 flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-green-900/30 rounded-2xl border border-green-200 dark:border-green-700/50 shadow-xl" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+          <i class="ph-fill ph-arrow-circle-up text-green-500 text-2xl shrink-0"></i>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold text-green-800 dark:text-green-200">Update Available</div>
+            <div class="text-xs text-green-600 dark:text-green-400">A new version is ready. Reload to update.</div>
+          </div>
+          <button (click)="pwa.activateUpdate()" class="px-3 py-1.5 rounded-xl bg-green-500 text-white text-xs font-semibold shrink-0 active:scale-95 transition-transform">Reload</button>
+        </div>
+      }
+
       <!-- FAB — opens new chat modal -->
       <div class="fixed bottom-6 right-6 z-20 flex flex-col-reverse items-center gap-3">
         <button 
@@ -366,6 +406,7 @@ export class ChatListComponent {
   private api = inject(ApiService);
   themeService = inject(ThemeService);
   animation = inject(AnimationService);
+  pwa = inject(PwaService);
   private router = inject(Router);
   
   listContainer = viewChild<ElementRef>('listContainer');
