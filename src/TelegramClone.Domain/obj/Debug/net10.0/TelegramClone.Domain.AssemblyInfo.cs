@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TelegramClone.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dd48ce1358c89fbdedd330897c941417045709be")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6f0ab2506592709f13eb44353e1aad3217f1ceb4")]
 [assembly: System.Reflection.AssemblyProductAttribute("TelegramClone.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TelegramClone.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

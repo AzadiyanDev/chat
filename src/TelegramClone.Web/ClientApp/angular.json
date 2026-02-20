@@ -19,6 +19,13 @@
             "browser": "main.ts",
             "tsConfig": "tsconfig.json",
             "serviceWorker": "ngsw-config.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "public",
+                "output": "."
+              }
+            ],
             "styles": [
               "node_modules/@phosphor-icons/web/src/regular/style.css",
               "node_modules/@phosphor-icons/web/src/bold/style.css",

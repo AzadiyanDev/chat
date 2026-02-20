@@ -31,7 +31,9 @@ public class ChatRepository : Repository<Chat>, IChatRepository
     public async Task<Chat?> GetDirectChatBetweenUsersAsync(Guid userId1, Guid userId2)
     {
         return await _dbSet
-            .Include(c => c.Participants)
+            .Include(c => c.Participants).ThenInclude(p => p.User)
+            .Include(c => c.Messages.Where(m => !m.IsDeleted).OrderByDescending(m => m.Timestamp).Take(1))
+                .ThenInclude(m => m.Sender)
             .Where(c => c.Type == ChatType.Direct)
             .Where(c => c.Participants.Any(p => p.UserId == userId1)
                      && c.Participants.Any(p => p.UserId == userId2))

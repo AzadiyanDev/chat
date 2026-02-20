@@ -41,7 +41,10 @@ public class ChatAppService : IChatAppService
             var existing = await _unitOfWork.Chats
                 .GetDirectChatBetweenUsersAsync(creatorId, dto.ParticipantIds[0]);
             if (existing != null)
-                return _mapper.Map<ChatDto>(existing);
+            {
+                var existingWithParticipants = await _unitOfWork.Chats.GetChatWithParticipantsAsync(existing.Id);
+                return _mapper.Map<ChatDto>(existingWithParticipants ?? existing);
+            }
         }
 
         var chat = new Chat
@@ -59,7 +62,7 @@ public class ChatAppService : IChatAppService
         });
 
         // Add other participants
-        foreach (var participantId in dto.ParticipantIds)
+        foreach (var participantId in dto.ParticipantIds.Where(id => id != creatorId).Distinct())
         {
             chat.Participants.Add(new ChatParticipant
             {
@@ -71,7 +74,8 @@ public class ChatAppService : IChatAppService
         await _unitOfWork.Chats.AddAsync(chat);
         await _unitOfWork.SaveChangesAsync();
 
-        return _mapper.Map<ChatDto>(chat);
+        var createdWithParticipants = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chat.Id);
+        return _mapper.Map<ChatDto>(createdWithParticipants ?? chat);
     }
 
     public async Task<bool> PinChatAsync(Guid chatId, Guid userId, bool isPinned)

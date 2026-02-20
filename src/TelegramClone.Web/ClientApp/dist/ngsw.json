@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "timestamp": 1771621395260,
+  "timestamp": 1771624541463,
   "index": "/index.html",
   "assetGroups": [
     {
@@ -13,14 +13,14 @@
       "urls": [
         "/chunk-2DZFZTHZ.js",
         "/chunk-E6TGZIGP.js",
-        "/chunk-FJZN4QFD.js",
         "/chunk-IWAD6R2N.js",
+        "/chunk-LH4JSU7J.js",
         "/chunk-MLBTRJRA.js",
         "/chunk-MOSGNJTJ.js",
         "/chunk-TGBLHORS.js",
-        "/chunk-UQYD26KG.js",
+        "/chunk-VQJ3IPNY.js",
         "/index.html",
-        "/main-DJRMERPB.js",
+        "/main-DNI2Y4IG.js",
         "/styles-X5MIWCTQ.css"
       ],
       "patterns": []
@@ -32,7 +32,19 @@
       "cacheQueryOptions": {
         "ignoreVary": true
       },
-      "urls": [],
+      "urls": [
+        "/icons/azadiyan-180.png",
+        "/icons/azadiyan-192.png",
+        "/icons/azadiyan-512.png",
+        "/icons/icon-128x128.svg",
+        "/icons/icon-144x144.svg",
+        "/icons/icon-152x152.svg",
+        "/icons/icon-192x192.svg",
+        "/icons/icon-384x384.svg",
+        "/icons/icon-512x512.svg",
+        "/icons/icon-72x72.svg",
+        "/icons/icon-96x96.svg"
+      ],
       "patterns": []
     }
   ],
@@ -40,14 +52,25 @@
   "hashTable": {
     "/chunk-2DZFZTHZ.js": "8684ab3869303302ec4722f839667b9800a4e6d3",
     "/chunk-E6TGZIGP.js": "4fc348d3f573d1d5991c00bfb21fa44fd356a378",
-    "/chunk-FJZN4QFD.js": "f85685b0784976dd0185f4109c915a6aa2a97d38",
     "/chunk-IWAD6R2N.js": "86c188a1779de9cc9a123ee0ead7065526befe08",
+    "/chunk-LH4JSU7J.js": "b7f7176cfeccb59abed2bd717008a55857b18346",
     "/chunk-MLBTRJRA.js": "cd25528187ecab8b235f1f9cb2bfb5aa8d313299",
     "/chunk-MOSGNJTJ.js": "a44fee8e182745661d13e98446e5359ff6585028",
     "/chunk-TGBLHORS.js": "4e3f72841486f17021021cb3e0f3a555c11645ad",
-    "/chunk-UQYD26KG.js": "cb47c873496ea38dd6444b4f045605f977134352",
-    "/index.html": "c4fd17ff91c6299609e59fa8119d019b070b5d9d",
-    "/main-DJRMERPB.js": "ff03e67494b076bb0f9122d49f866bbb20e900f6",
+    "/chunk-VQJ3IPNY.js": "8ee7a08255328253e444c1c8060f2f5fc0bf98d7",
+    "/icons/azadiyan-180.png": "fcabe4bd62e0cf36c8bbe364e12949030e26e209",
+    "/icons/azadiyan-192.png": "4a7b50a5b045d34a1a3b96b392f3f9f9bd400685",
+    "/icons/azadiyan-512.png": "b12034c7be6abfdadc53b5431164b1b6d94cbb8d",
+    "/icons/icon-128x128.svg": "959f1c69fe5fc4361f56a06481b2235425008c76",
+    "/icons/icon-144x144.svg": "fb96bccc84a3035f0f32ec4a076aa233148e337a",
+    "/icons/icon-152x152.svg": "6d215b03040c97a853f36e955c2d016ef37b2c92",
+    "/icons/icon-192x192.svg": "5476914445c69933ea721259c5b2d25e0b3e1108",
+    "/icons/icon-384x384.svg": "f823509d02e021bdb9a66b82ece48e7bbe270fe8",
+    "/icons/icon-512x512.svg": "0850fada728482ff32ee0e72c1c9e81f99918dae",
+    "/icons/icon-72x72.svg": "85e7e4fb954e2b08924fd207beca0243ccf1d53f",
+    "/icons/icon-96x96.svg": "5c20182f9775caafb2ea4203e97870db7c54f70e",
+    "/index.html": "1fc68630a21a2471495ab50611d31d310c8423c3",
+    "/main-DNI2Y4IG.js": "0e2dbabc7b17cc8fe920f561d42f4680a43d351f",
     "/styles-X5MIWCTQ.css": "c9c9c0e4a37b8db2e492a9aff88377dc50c09f99"
   },
   "navigationUrls": [

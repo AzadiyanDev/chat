@@ -204,7 +204,9 @@ export class ChatService {
     return {
       id: String(d.id),
       type: this.normalizeChatType(d.type),
-      participants: (d.participants || []).map((p: any) => this.mapUser(p)),
+      participants: (d.participants || [])
+        .filter((p: any) => p != null)
+        .map((p: any) => this.mapUser(p)),
       lastMessage: d.lastMessage ? this.mapMessage(d.lastMessage) : undefined,
       unreadCount: d.unreadCount ?? 0,
       isPinned: d.isPinned ?? false,

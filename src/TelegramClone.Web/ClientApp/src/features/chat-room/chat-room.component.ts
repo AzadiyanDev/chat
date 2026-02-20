@@ -25,8 +25,10 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
   imports: [AvatarComponent, VoicePlayerComponent, EmojiPickerComponent, TypingIndicatorComponent, DateSeparatorComponent, ShortTimePipe, FormsModule],
   template: `
     <div
-      class="flex flex-col h-screen w-full overflow-hidden relative"
+      class="flex flex-col h-full w-full overflow-hidden relative"
       id="chat-room-container"
+      [style.height]="containerHeight()"
+      [style.--kb-offset]="keyboardInset() + 'px'"
       (dragover)="onDragOver($event)"
       (dragleave)="onDragLeave($event)"
       (drop)="onDropFiles($event)"
@@ -92,7 +94,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
       <div 
         #messagesContainer 
         class="flex-1 overflow-y-auto px-4 pt-4 flex flex-col gap-1 relative telegram-pattern custom-scrollbar"
-        [style.paddingBottom]="replyingTo() ? '9.25rem' : '6rem'"
+        [style.paddingBottom]="messagesPaddingBottom()"
       >
         @for (item of displayItems(); track item.key) {
           @if (item.type === 'date') {
@@ -288,6 +290,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
       @if (showScrollBtn()) {
         <button 
           class="absolute bottom-[80px] right-4 z-30 w-10 h-10 rounded-full bg-white dark:bg-telegram-surface shadow-lg flex items-center justify-center text-telegram-primary hover:scale-110 active:scale-90 transition-all border border-gray-200 dark:border-gray-700"
+          [style.bottom]="floatingBottomOffset()"
           (click)="scrollToBottom()"
           id="scroll-bottom-btn"
         >
@@ -459,7 +462,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
 
       <!-- Emoji Picker -->
       @if (showEmojiPicker()) {
-        <div class="absolute bottom-[80px] left-3 right-3 z-30 flex justify-center" id="emoji-picker-panel">
+        <div class="absolute bottom-[80px] left-3 right-3 z-30 flex justify-center" id="emoji-picker-panel" [style.bottom]="floatingBottomOffset()">
           <app-emoji-picker (emojiSelected)="onEmojiSelected($event)"></app-emoji-picker>
         </div>
         <div class="fixed inset-0 z-20" (click)="showEmojiPicker.set(false)"></div>
@@ -467,7 +470,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
 
       <!-- Reply Bar — Island -->
       @if (replyingTo()) {
-        <div class="absolute bottom-[80px] left-3 right-3 px-3 py-2 flex items-center gap-2 z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md shadow-black/5 dark:shadow-black/20" id="reply-bar">
+        <div class="absolute bottom-[80px] left-3 right-3 px-3 py-2 flex items-center gap-2 z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md shadow-black/5 dark:shadow-black/20" id="reply-bar" [style.bottom]="floatingBottomOffset()">
           <div class="w-0.5 h-8 bg-telegram-primary rounded-full shrink-0"></div>
           <div class="flex-1 min-w-0">
             <div class="text-xs font-semibold text-telegram-primary">{{ chatService.getUserById(replyingTo()!.senderId)?.name }}</div>
@@ -482,6 +485,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
       <!-- Attachment Panel — Island -->
       @if (showAttachmentPanel()) {
         <div class="absolute bottom-[80px] left-3 right-3 p-4 z-30 bg-white dark:bg-telegram-surface shadow-xl rounded-2xl"
+             [style.bottom]="floatingBottomOffset()"
              id="attachment-panel">
           <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-4"></div>
           <div class="grid grid-cols-4 gap-4">
@@ -526,7 +530,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         <div
           class="absolute z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md px-3 py-2 w-[230px] max-w-[calc(100%-1.5rem)]"
           style="left: 0.75rem;"
-          [style.bottom]="replyingTo() ? '6.3rem' : '4.55rem'"
+          [style.bottom]="pendingBarBottomOffset()"
         >
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-telegram-muted">
@@ -563,7 +567,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         </div>
       }
 
-      <footer class="safe-pb absolute bottom-0 left-0 right-0 z-20 px-4 pb-2 pt-2">
+      <footer class="safe-pb absolute bottom-0 left-0 right-0 z-20 px-4 pb-2 pt-2" [style.bottom]="'var(--kb-offset, 0px)'">
         <div
           class="flex items-end px-3 py-2 gap-1.5 min-h-[52px] bg-white/90 dark:bg-telegram-surface rounded-3xl shadow-xl border border-gray-200 dark:border-gray-700/50"
           style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);"
@@ -658,6 +662,20 @@ export class ChatRoomComponent implements OnDestroy {
   hasText = signal(false);
   showEmojiPicker = signal(false);
   showScrollBtn = signal(false);
+  keyboardInset = signal(0);
+  private viewportHeight = signal(0);
+  containerHeight = computed(() => this.viewportHeight() > 0 ? `${this.viewportHeight()}px` : null);
+  messagesPaddingBottom = computed(() =>
+    this.replyingTo()
+      ? 'calc(9.25rem + var(--kb-offset, 0px))'
+      : 'calc(6rem + var(--kb-offset, 0px))'
+  );
+  floatingBottomOffset = computed(() => 'calc(80px + var(--kb-offset, 0px))');
+  pendingBarBottomOffset = computed(() =>
+    this.replyingTo()
+      ? 'calc(6.3rem + var(--kb-offset, 0px))'
+      : 'calc(4.55rem + var(--kb-offset, 0px))'
+  );
   
   // All UI state as signals for zoneless compatibility
   showAttachmentPanel = signal(false);
@@ -689,6 +707,8 @@ export class ChatRoomComponent implements OnDestroy {
   // Scroll rAF throttle
   private scrollRafId: number | null = null;
   private routeSub: any;
+  private lastKeyboardInset = 0;
+  private onViewportChange = () => this.syncViewportMetrics();
 
   chat = computed(() => this.chatService.getChatById(this.chatId));
   participant = computed(() => {
@@ -782,6 +802,8 @@ export class ChatRoomComponent implements OnDestroy {
   private messageCount = 0;
 
   constructor() {
+    afterNextRender(() => this.attachViewportListeners());
+
     this.routeSub = this.route.params.subscribe(params => {
       this.chatId = params['id'];
       this.chatService.markAsRead(this.chatId);
@@ -817,6 +839,7 @@ export class ChatRoomComponent implements OnDestroy {
   }
 
   ngOnDestroy() {
+    this.detachViewportListeners();
     this.routeSub?.unsubscribe();
     if (this.scrollRafId) cancelAnimationFrame(this.scrollRafId);
     const el = this.messagesContainer()?.nativeElement;
@@ -847,6 +870,52 @@ export class ChatRoomComponent implements OnDestroy {
     if (el) {
       el.addEventListener('scroll', this.scrollHandler, { passive: true });
     }
+  }
+
+  private syncViewportMetrics() {
+    if (typeof window === 'undefined') return;
+
+    const vv = window.visualViewport;
+    if (!vv) {
+      this.viewportHeight.set(window.innerHeight || document.documentElement.clientHeight || 0);
+      this.keyboardInset.set(0);
+      this.lastKeyboardInset = 0;
+      return;
+    }
+
+    const nextHeight = Math.round(vv.height);
+    const rawInset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    const nextInset = rawInset > 80 ? rawInset : 0;
+
+    this.viewportHeight.set(nextHeight);
+    this.keyboardInset.set(nextInset);
+
+    const wasClosed = this.lastKeyboardInset === 0;
+    this.lastKeyboardInset = nextInset;
+
+    const inputEl = this.messageInput()?.nativeElement as HTMLTextAreaElement | undefined;
+    if (wasClosed && nextInset > 0 && inputEl && document.activeElement === inputEl) {
+      setTimeout(() => this.scrollToBottom(), 40);
+    }
+  }
+
+  private attachViewportListeners() {
+    if (typeof window === 'undefined') return;
+
+    this.syncViewportMetrics();
+    window.addEventListener('resize', this.onViewportChange);
+    window.addEventListener('orientationchange', this.onViewportChange);
+    window.visualViewport?.addEventListener('resize', this.onViewportChange);
+    window.visualViewport?.addEventListener('scroll', this.onViewportChange);
+  }
+
+  private detachViewportListeners() {
+    if (typeof window === 'undefined') return;
+
+    window.removeEventListener('resize', this.onViewportChange);
+    window.removeEventListener('orientationchange', this.onViewportChange);
+    window.visualViewport?.removeEventListener('resize', this.onViewportChange);
+    window.visualViewport?.removeEventListener('scroll', this.onViewportChange);
   }
 
   getDateLabel(ts: number): string {

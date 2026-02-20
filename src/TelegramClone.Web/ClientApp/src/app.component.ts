@@ -9,7 +9,7 @@ import { SignalRService } from './core/services/signalr.service';
   standalone: true,
   imports: [RouterOutlet],
   template: `
-    <div class="h-screen w-screen overflow-hidden relative bg-white dark:bg-telegram-surface">
+    <div class="fixed inset-0 overflow-hidden relative bg-white dark:bg-telegram-surface">
       @if (auth.isLoading()) {
         <div class="h-full w-full flex items-center justify-center" style="background: var(--tg-bg);">
           <div class="text-center">
