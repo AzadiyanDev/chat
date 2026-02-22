@@ -220,6 +220,12 @@ public class TelegramDbContext : IdentityDbContext<ApplicationUser>
             entity.HasIndex(e => new { e.DestinationUserId, e.DestinationDeviceId, e.IsDelivered });
             entity.HasIndex(e => e.ExpiresAt);
 
+            // Dedup: unique constraint on (DestinationDeviceId, EnvelopeId)
+            // Prevents replay/retry from creating duplicate envelopes
+            entity.HasIndex(e => new { e.DestinationDeviceId, e.EnvelopeId })
+                .IsUnique()
+                .HasDatabaseName("UX_MessageEnvelope_Dest_EnvelopeId");
+
             entity.HasOne(e => e.DestinationUser)
                 .WithMany()
                 .HasForeignKey(e => e.DestinationUserId)

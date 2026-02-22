@@ -9,6 +9,12 @@ namespace TelegramClone.Domain.Entities;
 public class MessageEnvelope : BaseEntity
 {
     /// <summary>
+    /// Client-generated UUID for dedup. Prevents replay/retry from creating duplicates.
+    /// Unique per (DestinationDeviceId, EnvelopeId).
+    /// </summary>
+    public Guid EnvelopeId { get; set; }
+
+    /// <summary>
     /// The recipient user ID (for routing).
     /// </summary>
     public Guid DestinationUserId { get; set; }

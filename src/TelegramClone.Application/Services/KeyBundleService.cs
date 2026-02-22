@@ -81,10 +81,12 @@ public class KeyBundleService : IKeyBundleService
 
         var kpk = await _unitOfWork.KeyBundles.GetKyberPreKeyAsync(targetUserId, targetDeviceId);
 
-        // Consume one OTP key (atomic)
+        // Consume one OTP key atomically within an explicit transaction
+        // The repository uses UPDLOCK/ROWLOCK/READPAST to prevent race conditions
+        await using var _ = await _unitOfWork.BeginTransactionAsync();
         var otpk = await _unitOfWork.KeyBundles.ConsumeOneTimePreKeyAsync(targetUserId, targetDeviceId);
-
         await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitTransactionAsync();
 
         return new KeyBundleResponseDto(
             targetUserId,

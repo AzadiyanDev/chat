@@ -49,6 +49,7 @@ export interface SubmitEnvelope {
   destinationDeviceId: number;
   type: EnvelopeType;
   content: string;  // base64 ciphertext
+  envelopeId: string; // client-generated UUID for dedup
 }
 
 export interface EnvelopeResponse {

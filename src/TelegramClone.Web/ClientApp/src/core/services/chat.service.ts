@@ -62,6 +62,8 @@ export class ChatService {
   /** Cache for getUserById look-ups */
   private usersCache = new Map<string, User>();
   private loadedChatMessages = new Set<string>();
+  private loadingIncomingChats = new Set<string>();
+  private tempToPersistedMessageIds = new Map<string, string>();
   private initialized = false;
 
   constructor() {
@@ -79,6 +81,8 @@ export class ChatService {
         this.messages.set([]);
         this.usersCache.clear();
         this.loadedChatMessages.clear();
+        this.loadingIncomingChats.clear();
+        this.tempToPersistedMessageIds.clear();
       }
     });
   }
@@ -92,12 +96,16 @@ export class ChatService {
       const message = this.mapMessage(raw);
       // Skip our own messages (already added optimistically)
       if (this.sameId(message.senderId, this.currentUser().id)) return;
+
+      const chatExists = this.chats().some(c => this.sameId(c.id, message.chatId));
+
       this.messages.update(msgs => this.upsertMessages(msgs, [message]));
-      this.chats.update(chats => chats.map(c =>
-        this.sameId(c.id, message.chatId)
-          ? { ...c, lastMessage: message, unreadCount: c.unreadCount + 1 }
-          : c
-      ));
+      if (chatExists) {
+        this.applyIncomingMessageToExistingChat(message);
+      } else {
+        this.loadIncomingChat(message);
+      }
+
       this.audio.playReceiveSound();
     });
 
@@ -106,13 +114,49 @@ export class ChatService {
     });
 
     this.hub.onReactionUpdated((data: any) => {
-      if (data.messageId && data.reactions) {
+      const messageId = String(data?.messageId ?? data?.id ?? '');
+      if (!messageId) return;
+
+      // Preferred payload: full grouped reactions
+      if (Array.isArray(data?.reactions)) {
         const reactions = (data.reactions as any[]).map(r => ({
-          emoji: r.emoji,
-          userIds: (r.userIds || []).map((id: any) => String(id))
-        }));
-        this.updateMessage(String(data.messageId), { reactions });
+          emoji: String(r?.emoji ?? ''),
+          userIds: (r?.userIds || []).map((id: any) => String(id))
+        })).filter(r => r.emoji.length > 0);
+        this.updateMessage(messageId, { reactions });
+        return;
       }
+
+      // Fallback payload: delta reaction update
+      const emoji = String(data?.emoji ?? '').trim();
+      const userId = String(data?.userId ?? '').trim();
+      const action = String(data?.action ?? '').trim().toLowerCase();
+      if (!emoji || !userId) return;
+
+      this.messages.update(msgs => msgs.map(m => {
+        if (!this.sameId(m.id, messageId)) return m;
+
+        const reactions = [...(m.reactions || [])];
+        const existing = reactions.find(r => r.emoji === emoji);
+
+        if (action === 'remove') {
+          if (!existing) return m;
+          existing.userIds = existing.userIds.filter(id => !this.sameId(id, userId));
+          return {
+            ...m,
+            reactions: reactions.filter(r => r.emoji !== emoji || r.userIds.length > 0)
+          };
+        }
+
+        if (existing) {
+          if (!existing.userIds.some(id => this.sameId(id, userId))) {
+            existing.userIds = [...existing.userIds, userId];
+          }
+          return { ...m, reactions: [...reactions] };
+        }
+
+        return { ...m, reactions: [...reactions, { emoji, userIds: [userId] }] };
+      }));
     });
 
     this.hub.onUserTyping((chatId, userId) => this.setTyping(chatId, userId, true));
@@ -150,15 +194,7 @@ export class ChatService {
       }
 
       // Sort: saved first, then pinned, then by last message time
-      chats.sort((a, b) => {
-        if (a.type === 'saved' && b.type !== 'saved') return -1;
-        if (b.type === 'saved' && a.type !== 'saved') return 1;
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return this.getChatActivityTimestamp(b) - this.getChatActivityTimestamp(a);
-      });
-
-      this.chats.set(chats);
+      this.chats.set(this.sortChats(chats));
 
       // Cache every participant for getUserById
       for (const chat of chats) {
@@ -328,8 +364,30 @@ export class ChatService {
           const persisted = this.mapMessage(raw);
 
           this.messages.update(msgs => {
-            const replaced = msgs.map(m => this.sameId(m.id, message.id) ? persisted : m);
-            return this.upsertMessages(replaced, [persisted]);
+            let replaced = false;
+            let persistedWithLocalState: Message = persisted;
+
+            const nextMsgs = msgs.map(m => {
+              if (!this.sameId(m.id, message.id)) return m;
+              replaced = true;
+              persistedWithLocalState = {
+                ...persisted,
+                // Keep the local animation state to prevent temporary double-render.
+                isAnimating: m.isAnimating,
+                status: m.status === 'sending' ? 'sending' : persisted.status
+              };
+              return persistedWithLocalState;
+            });
+
+            if (!this.sameId(message.id, persisted.id)) {
+              this.tempToPersistedMessageIds.set(this.normalizeId(message.id), persisted.id);
+            }
+
+            if (replaced) {
+              return this.upsertMessages(nextMsgs, [persistedWithLocalState]);
+            }
+
+            return this.upsertMessages(nextMsgs, [persisted]);
           });
 
           this.chats.update(chats => chats.map(c =>
@@ -344,7 +402,20 @@ export class ChatService {
   }
 
   updateMessage(id: string, updates: Partial<Message>) {
-    this.messages.update(msgs => msgs.map(m => this.sameId(m.id, id) ? { ...m, ...updates } : m));
+    const normalizedId = this.normalizeId(id);
+    const mappedId = this.tempToPersistedMessageIds.get(normalizedId);
+    const targetId = mappedId ?? id;
+    let updated = false;
+
+    this.messages.update(msgs => msgs.map(m => {
+      if (!this.sameId(m.id, targetId)) return m;
+      updated = true;
+      return { ...m, ...updates };
+    }));
+
+    if (updated && mappedId && updates.status === 'seen') {
+      this.tempToPersistedMessageIds.delete(normalizedId);
+    }
   }
 
   deleteMessage(messageId: string): boolean {
@@ -401,6 +472,56 @@ export class ChatService {
     });
   }
 
+  private applyIncomingMessageToExistingChat(message: Message) {
+    this.chats.update(chats => {
+      const updated = chats.map(c =>
+        this.sameId(c.id, message.chatId)
+          ? { ...c, lastMessage: message, unreadCount: c.unreadCount + 1 }
+          : c
+      );
+      return this.sortChats(updated);
+    });
+  }
+
+  private loadIncomingChat(message: Message) {
+    const key = this.normalizeId(message.chatId);
+    if (!key || this.loadingIncomingChats.has(key)) return;
+
+    this.loadingIncomingChats.add(key);
+
+    this.api.getChat(message.chatId).subscribe({
+      next: (raw: any) => {
+        if (!raw) return;
+
+        const incomingChat = this.mapChat(raw);
+        const chatWithMessage: Chat = {
+          ...incomingChat,
+          lastMessage: message,
+          unreadCount: Math.max(incomingChat.unreadCount ?? 0, 1)
+        };
+
+        for (const p of chatWithMessage.participants) {
+          this.usersCache.set(p.id, p);
+        }
+
+        this.chats.update(chats => {
+          const merged = this.dedupeChatsById([chatWithMessage, ...chats]);
+          return this.sortChats(merged);
+        });
+
+        this.hub.joinChat(chatWithMessage.id).catch(() => {});
+        this.ensureMessagesLoaded(chatWithMessage.id);
+      },
+      error: (err: any) => {
+        console.error('Failed to load incoming chat:', err);
+        this.loadingIncomingChats.delete(key);
+      },
+      complete: () => {
+        this.loadingIncomingChats.delete(key);
+      }
+    });
+  }
+
   // ═══════════════════════════════════════════
   //  Typing helpers
   // ═══════════════════════════════════════════
@@ -443,7 +564,7 @@ export class ChatService {
       this.chats.update(chats => {
         const existing = chats.find(c => this.sameId(c.id, chat.id));
         if (existing) return chats;
-        return [chat, ...chats];
+        return this.sortChats([chat, ...chats]);
       });
       // Cache participants
       for (const p of chat.participants) this.usersCache.set(p.id, p);
@@ -573,6 +694,16 @@ export class ChatService {
 
   private getChatActivityTimestamp(chat: Chat): number {
     return chat.lastMessage?.timestamp ?? 0;
+  }
+
+  private sortChats(chats: Chat[]): Chat[] {
+    return [...chats].sort((a, b) => {
+      if (a.type === 'saved' && b.type !== 'saved') return -1;
+      if (b.type === 'saved' && a.type !== 'saved') return 1;
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return this.getChatActivityTimestamp(b) - this.getChatActivityTimestamp(a);
+    });
   }
 
   private updateUserOnlineStatus(userId: string, isOnline: boolean) {

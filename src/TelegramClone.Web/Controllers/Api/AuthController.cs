@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using TelegramClone.Application.DTOs;
 using TelegramClone.Application.Interfaces;
 using TelegramClone.Infrastructure.Identity;
@@ -9,6 +10,7 @@ namespace TelegramClone.Web.Controllers.Api;
 
 [ApiController]
 [Route("api/[controller]")]
+[EnableRateLimiting("auth")]
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;

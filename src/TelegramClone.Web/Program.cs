@@ -2,6 +2,7 @@ using TelegramClone.Application;
 using TelegramClone.Infrastructure;
 using TelegramClone.Infrastructure.Data;
 using TelegramClone.Web.Hubs;
+using TelegramClone.Web.Services;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,6 +29,9 @@ builder.Services.AddSignalR(options =>
 {
     options.MaximumReceiveMessageSize = 256 * 1024; // 256KB max SignalR message
 });
+
+// ──── Background Services ────
+builder.Services.AddHostedService<EnvelopeCleanupService>();
 
 // ──── Rate Limiting ────
 builder.Services.AddRateLimiter(options =>
@@ -221,3 +225,6 @@ app.MapFallback(async context =>
 });
 
 app.Run();
+
+// Marker class for WebApplicationFactory<Program> in integration tests
+public partial class Program { }

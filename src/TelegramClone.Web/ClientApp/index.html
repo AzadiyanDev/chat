@@ -466,7 +466,7 @@
     .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
     .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
-    .safe-pt { padding-top: env(safe-area-inset-top, 12px); }
+    .safe-pt { padding-top: max(12px, env(safe-area-inset-top, 0px)); }
     .safe-pb { padding-bottom: env(safe-area-inset-bottom, 8px); }
 
     /* ============ GLASSMORPHISM — GPU ACCELERATED ============ */

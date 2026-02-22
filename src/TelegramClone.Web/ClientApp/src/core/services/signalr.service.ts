@@ -15,8 +15,8 @@ export class SignalRService {
   private onlineHandlers: ((userId: string) => void)[] = [];
   private offlineHandlers: ((userId: string) => void)[] = [];
   private statusHandlers: ((messageId: string, status: string) => void)[] = [];
-  private envelopeReadyHandlers: (() => void)[] = [];
-  private keyChangeHandlers: ((userId: string, deviceId: number) => void)[] = [];
+  private envelopeReadyHandlers: ((data: { destinationDeviceId: number; timestamp: string }) => void)[] = [];
+  private keyChangeHandlers: ((data: { userId: string; timestamp: string }) => void)[] = [];
 
   async start(): Promise<void> {
     if (this.connection) return;
@@ -63,12 +63,12 @@ export class SignalRService {
         this.statusHandlers.forEach(h => h(messageId, status));
       });
 
-      this.connection.on('EnvelopeReady', () => {
-        this.envelopeReadyHandlers.forEach(h => h());
+      this.connection.on('NewEnvelope', (data: { destinationDeviceId: number; timestamp: string }) => {
+        this.envelopeReadyHandlers.forEach(h => h(data));
       });
 
-      this.connection.on('KeyChange', (userId: string, deviceId: number) => {
-        this.keyChangeHandlers.forEach(h => h(userId, deviceId));
+      this.connection.on('KeyBundleChanged', (data: { userId: string; timestamp: string }) => {
+        this.keyChangeHandlers.forEach(h => h(data));
       });
 
       this.connection.onreconnected(() => {
@@ -175,12 +175,12 @@ export class SignalRService {
     return () => { this.statusHandlers = this.statusHandlers.filter(h => h !== handler); };
   }
 
-  onEnvelopeReady(handler: () => void): () => void {
+  onEnvelopeReady(handler: (data: { destinationDeviceId: number; timestamp: string }) => void): () => void {
     this.envelopeReadyHandlers.push(handler);
     return () => { this.envelopeReadyHandlers = this.envelopeReadyHandlers.filter(h => h !== handler); };
   }
 
-  onKeyChange(handler: (userId: string, deviceId: number) => void): () => void {
+  onKeyBundleChanged(handler: (data: { userId: string; timestamp: string }) => void): () => void {
     this.keyChangeHandlers.push(handler);
     return () => { this.keyChangeHandlers = this.keyChangeHandlers.filter(h => h !== handler); };
   }

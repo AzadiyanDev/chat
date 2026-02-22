@@ -33,6 +33,21 @@ public class MessagesController : ControllerBase
         return user?.Id;
     }
 
+    private async Task BroadcastToChatParticipantsAsync(Guid chatId, string eventName, object payload)
+    {
+        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
+        if (chat == null || chat.Participants.Count == 0) return;
+
+        var userGroups = chat.Participants
+            .Select(p => $"user_{p.UserId}")
+            .Distinct()
+            .ToList();
+
+        if (userGroups.Count == 0) return;
+
+        await _hubContext.Clients.Groups(userGroups).SendAsync(eventName, payload);
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetMessages(Guid chatId, [FromQuery] int limit = 50, [FromQuery] DateTime? before = null)
     {
@@ -48,8 +63,8 @@ public class MessagesController : ControllerBase
 
         var message = await _messageService.SendMessageAsync(chatId, userId.Value, dto);
 
-        // Broadcast via SignalR
-        await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReceiveMessage", message);
+        // Broadcast to all chat participants (works even if a new chat group was not joined yet)
+        await BroadcastToChatParticipantsAsync(chatId, "ReceiveMessage", message);
 
         return Ok(message);
     }
@@ -76,7 +91,11 @@ public class MessagesController : ControllerBase
         var message = await _messageService.AddReactionAsync(id, userId.Value, dto.Emoji);
         if (message == null) return NotFound();
 
-        await _hubContext.Clients.Group(chatId.ToString()).SendAsync("ReactionUpdated", message);
+        await BroadcastToChatParticipantsAsync(chatId, "ReactionUpdated", new
+        {
+            messageId = message.Id,
+            reactions = message.Reactions
+        });
         return Ok(message);
     }
 
@@ -88,6 +107,14 @@ public class MessagesController : ControllerBase
 
         var result = await _messageService.RemoveReactionAsync(id, userId.Value, emoji);
         if (!result) return NotFound();
+
+        await BroadcastToChatParticipantsAsync(chatId, "ReactionUpdated", new
+        {
+            messageId = id,
+            emoji,
+            userId = userId.Value,
+            action = "remove"
+        });
         return Ok();
     }
 
@@ -100,7 +127,7 @@ public class MessagesController : ControllerBase
         var message = await _messageService.ForwardMessageAsync(id, request.TargetChatId, userId.Value);
         if (message == null) return NotFound();
 
-        await _hubContext.Clients.Group(request.TargetChatId.ToString()).SendAsync("ReceiveMessage", message);
+        await BroadcastToChatParticipantsAsync(request.TargetChatId, "ReceiveMessage", message);
         return Ok(message);
     }
 }

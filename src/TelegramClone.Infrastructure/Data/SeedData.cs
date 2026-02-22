@@ -26,7 +26,11 @@ public static class SeedData
         var context = scope.ServiceProvider.GetRequiredService<TelegramDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-        await context.Database.MigrateAsync();
+        // InMemory provider does not support migrations; use EnsureCreated instead
+        if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+            await context.Database.EnsureCreatedAsync();
+        else
+            await context.Database.MigrateAsync();
 
         // Remove legacy demo chats/messages if they exist, while keeping any user-created chats.
         await RemoveLegacySeedChatsAsync(context);

@@ -446,6 +446,9 @@ namespace TelegramClone.Infrastructure.Migrations
                     b.Property<Guid>("DestinationUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("EnvelopeId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("datetime2");
 
@@ -467,6 +470,10 @@ namespace TelegramClone.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("DestinationDeviceId", "EnvelopeId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_MessageEnvelope_Dest_EnvelopeId");
 
                     b.HasIndex("DestinationUserId", "DestinationDeviceId", "IsDelivered");
 

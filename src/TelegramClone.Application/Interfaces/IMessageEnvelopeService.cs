@@ -10,8 +10,10 @@ public interface IMessageEnvelopeService
 {
     /// <summary>
     /// Submit one or more encrypted envelopes for delivery (multi-device fan-out).
+    /// Returns per-item results (accepted/duplicate/rejected).
     /// </summary>
-    Task SubmitEnvelopesAsync(Guid senderUserId, int senderDeviceId, IEnumerable<SubmitEnvelopeDto> envelopes);
+    Task<IEnumerable<EnvelopeSubmitResultDto>> SubmitEnvelopesAsync(
+        Guid senderUserId, int senderDeviceId, IEnumerable<SubmitEnvelopeDto> envelopes);
 
     /// <summary>
     /// Fetch queued (undelivered) envelopes for the requesting device.

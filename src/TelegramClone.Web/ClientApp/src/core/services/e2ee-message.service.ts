@@ -201,17 +201,35 @@ export class E2eeMessageService {
 
   /**
    * Download and decrypt an attachment using its pointer metadata.
+   * Verifies ciphertext integrity via SHA-256 digest before decryption.
    */
   async downloadAndDecryptAttachment(pointer: AttachmentPointer): Promise<ArrayBuffer> {
     const ciphertext = await firstValueFrom(this.api.downloadAttachment(pointer.attachmentId));
+
+    // Verify digest integrity before decryption
+    const ciphertextU8 = new Uint8Array(ciphertext);
+    const digestValid = await this.attachmentCrypto.verifyDigest([ciphertextU8], pointer.digest);
+    if (!digestValid) {
+      throw new Error('Attachment integrity check failed: ciphertext digest mismatch.');
+    }
+
     return this.attachmentCrypto.decryptAttachmentBlob(pointer, ciphertext);
   }
 
   /**
    * Download and decrypt a voice note.
+   * Verifies ciphertext integrity via SHA-256 digest before decryption.
    */
   async downloadAndDecryptVoice(pointer: VoicePointer): Promise<ArrayBuffer> {
     const ciphertext = await firstValueFrom(this.api.downloadAttachment(pointer.attachmentId));
+
+    // Verify digest integrity before decryption
+    const ciphertextU8 = new Uint8Array(ciphertext);
+    const digestValid = await this.attachmentCrypto.verifyDigest([ciphertextU8], pointer.digest);
+    if (!digestValid) {
+      throw new Error('Voice note integrity check failed: ciphertext digest mismatch.');
+    }
+
     return this.attachmentCrypto.decryptAttachmentBlob(pointer, ciphertext);
   }
 
@@ -250,13 +268,14 @@ export class E2eeMessageService {
           destinationUserId: userId,
           destinationDeviceId: deviceId,
           type: encrypted.type as any,
-          content: encrypted.body
+          content: encrypted.body,
+          envelopeId: crypto.randomUUID()
         });
       }
     }
 
     if (envelopes.length > 0) {
-      await firstValueFrom(this.api.submitEnvelopes(envelopes));
+      await firstValueFrom(this.api.submitEnvelopes(this.localDeviceId, envelopes));
     }
   }
 
@@ -295,8 +314,8 @@ export class E2eeMessageService {
   }
 
   private startEnvelopePolling(): void {
-    // Listen for SignalR push notifications
-    this.signalR.onEnvelopeReady(() => {
+    // Listen for SignalR push notifications (canonical event: "NewEnvelope")
+    this.signalR.onEnvelopeReady((_data) => {
       this.fetchAndDecrypt().catch(err =>
         console.error('Envelope fetch failed:', err)
       );

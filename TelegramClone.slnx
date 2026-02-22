@@ -5,4 +5,7 @@
     <Project Path="src/TelegramClone.Infrastructure/TelegramClone.Infrastructure.csproj" />
     <Project Path="src/TelegramClone.Web/TelegramClone.Web.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TelegramClone.IntegrationTests/TelegramClone.IntegrationTests.csproj" />
+  </Folder>
 </Solution>

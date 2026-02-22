@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 using TelegramClone.Application.Interfaces;
 using TelegramClone.Domain.Interfaces;
@@ -9,6 +10,7 @@ namespace TelegramClone.Web.Controllers.Api;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[EnableRateLimiting("uploads")]
 public class AttachmentsController : ControllerBase
 {
     private readonly IEncryptedAttachmentService _attachmentService;

@@ -70,7 +70,9 @@ public record SubmitEnvelopeDto(
     /// <summary>1=PreKey, 2=Normal, 3=SenderKey</summary>
     int Type,
     /// <summary>Encrypted content (base64).</summary>
-    string Content
+    string Content,
+    /// <summary>Client-generated UUID for dedup. Must be unique per (DestinationDeviceId, EnvelopeId).</summary>
+    Guid EnvelopeId
 );
 
 /// <summary>
@@ -86,6 +88,11 @@ public record EnvelopeResponseDto(
 );
 
 public record AcknowledgeEnvelopesDto(IReadOnlyList<Guid> EnvelopeIds);
+
+/// <summary>
+/// Per-item result for envelope submission (accepted/duplicate/rejected).
+/// </summary>
+public record EnvelopeSubmitResultDto(Guid EnvelopeId, string Status, string? Error);
 
 // ──── Encrypted Attachments ────
 
@@ -110,4 +117,8 @@ public record CompleteUploadResponseDto(
 // ──── Key Replenishment ────
 
 public record ReplenishPreKeysDto(IReadOnlyList<PreKeyDto> OneTimePreKeys);
-public record PreKeyCountDto(int Count);
+
+/// <summary>
+/// Response for OTPK count endpoint. Canonical field name: "available".
+/// </summary>
+public record PreKeyCountDto(int Available);

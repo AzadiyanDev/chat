@@ -43,4 +43,18 @@ public class MessageEnvelopeRepository : Repository<MessageEnvelope>, IMessageEn
             .Where(e => e.ExpiresAt <= DateTime.UtcNow)
             .ExecuteDeleteAsync();
     }
+
+    public async Task<int> GetQueuedCountAsync(Guid userId, int deviceId)
+    {
+        return await _dbSet
+            .CountAsync(e => e.DestinationUserId == userId
+                         && e.DestinationDeviceId == deviceId
+                         && !e.IsDelivered);
+    }
+
+    public async Task<bool> ExistsByEnvelopeIdAsync(int destinationDeviceId, Guid envelopeId)
+    {
+        return await _dbSet
+            .AnyAsync(e => e.DestinationDeviceId == destinationDeviceId && e.EnvelopeId == envelopeId);
+    }
 }

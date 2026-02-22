@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 using TelegramClone.Application.DTOs;
 using TelegramClone.Application.Interfaces;
@@ -10,6 +11,7 @@ namespace TelegramClone.Web.Controllers.Api;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
+[EnableRateLimiting("keys")]
 public class KeysController : ControllerBase
 {
     private readonly IKeyBundleService _keyBundleService;
@@ -30,6 +32,18 @@ public class KeysController : ControllerBase
     }
 
     /// <summary>
+    /// Verify that the given deviceId belongs to the authenticated user.
+    /// Returns null if ownership is valid, or a 403 result if not.
+    /// </summary>
+    private async Task<IActionResult?> AssertDeviceOwnership(Guid userId, int deviceId)
+    {
+        var device = await _unitOfWork.Devices.GetDeviceAsync(userId, deviceId);
+        if (device == null)
+            return StatusCode(403, new { error = "DeviceId does not belong to the authenticated user." });
+        return null;
+    }
+
+    /// <summary>
     /// Upload a full key bundle for the current user's device.
     /// Contains: identity public key, signed pre-key, optional kyber pre-key, one-time pre-keys.
     /// Private keys NEVER leave the client device.
@@ -39,6 +53,9 @@ public class KeysController : ControllerBase
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+
+        var ownershipError = await AssertDeviceOwnership(userId.Value, deviceId);
+        if (ownershipError != null) return ownershipError;
 
         await _keyBundleService.UploadBundleAsync(userId.Value, deviceId, dto);
 
@@ -54,6 +71,7 @@ public class KeysController : ControllerBase
     [HttpGet("bundle/{userId:guid}/{deviceId:int}")]
     public async Task<IActionResult> FetchBundle(Guid userId, int deviceId)
     {
+        // Public endpoint — any authenticated user can fetch bundles for session setup
         var bundle = await _keyBundleService.FetchBundleAsync(userId, deviceId);
         if (bundle == null) return NotFound(new { error = "Key bundle not found for this device." });
         return Ok(bundle);
@@ -66,6 +84,7 @@ public class KeysController : ControllerBase
     [HttpGet("bundle/{userId:guid}")]
     public async Task<IActionResult> FetchAllBundles(Guid userId)
     {
+        // Public endpoint — any authenticated user can fetch bundles
         var bundles = await _keyBundleService.FetchAllDeviceBundlesAsync(userId);
         return Ok(bundles);
     }
@@ -79,6 +98,9 @@ public class KeysController : ControllerBase
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+
+        var ownershipError = await AssertDeviceOwnership(userId.Value, deviceId);
+        if (ownershipError != null) return ownershipError;
 
         await _keyBundleService.ReplenishPreKeysAsync(userId.Value, deviceId, dto);
 
@@ -94,6 +116,9 @@ public class KeysController : ControllerBase
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+
+        var ownershipError = await AssertDeviceOwnership(userId.Value, deviceId);
+        if (ownershipError != null) return ownershipError;
 
         var count = await _keyBundleService.GetOneTimePreKeyCountAsync(userId.Value, deviceId);
         return Ok(new PreKeyCountDto(count));

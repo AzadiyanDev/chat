@@ -165,8 +165,8 @@ export class ApiService {
   }
 
   // ──── E2EE: Envelopes ────
-  submitEnvelopes(envelopes: SubmitEnvelope[]): Observable<any> {
-    return this.http.post(`${this.baseUrl}/envelopes`, { envelopes });
+  submitEnvelopes(senderDeviceId: number, envelopes: SubmitEnvelope[]): Observable<any> {
+    return this.http.post(`${this.baseUrl}/envelopes`, { senderDeviceId, envelopes });
   }
 
   fetchEnvelopes(deviceId: number): Observable<EnvelopeResponse[]> {

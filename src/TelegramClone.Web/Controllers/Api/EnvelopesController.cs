@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using System.Security.Claims;
 using TelegramClone.Application.DTOs;
@@ -42,35 +43,110 @@ public class EnvelopesController : ControllerBase
     /// Supports multi-device fan-out (multiple envelopes per request).
     /// </summary>
     [HttpPost]
+    [EnableRateLimiting("envelopes")]
     public async Task<IActionResult> SubmitEnvelopes([FromBody] SubmitEnvelopesRequest request)
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
 
-        await _envelopeService.SubmitEnvelopesAsync(userId.Value, request.SenderDeviceId, request.Envelopes);
+        // === Security: validate SenderDeviceId belongs to the authenticated user ===
+        var senderDevice = await _unitOfWork.Devices.GetDeviceAsync(userId.Value, request.SenderDeviceId);
+        if (senderDevice == null)
+            return StatusCode(403, new { error = "SenderDeviceId does not belong to the authenticated user." });
 
-        // Notify each destination device via SignalR (lightweight push — no content)
-        foreach (var env in request.Envelopes)
+        // === Per-envelope validation ===
+        var results = new List<object>();
+        var validEnvelopes = new List<SubmitEnvelopeDto>();
+        const int maxCiphertextBytes = 256 * 1024; // 256 KB
+
+        for (int i = 0; i < request.Envelopes.Count; i++)
         {
-            await _hubContext.Clients.User(env.DestinationUserId.ToString())
-                .SendAsync("NewEnvelope", new
-                {
-                    destinationDeviceId = env.DestinationDeviceId,
-                    timestamp = DateTime.UtcNow
-                });
+            var env = request.Envelopes[i];
+
+            // Validate EnvelopeId
+            if (env.EnvelopeId == Guid.Empty)
+            {
+                results.Add(new { index = i, status = "rejected", error = "envelopeId is required." });
+                continue;
+            }
+
+            // Validate base64 content and size
+            byte[]? contentBytes;
+            try
+            {
+                contentBytes = Convert.FromBase64String(env.Content);
+            }
+            catch
+            {
+                results.Add(new { index = i, status = "rejected", error = "content is not valid base64." });
+                continue;
+            }
+
+            if (contentBytes.Length > maxCiphertextBytes)
+            {
+                results.Add(new { index = i, status = "rejected", error = $"content exceeds {maxCiphertextBytes} bytes." });
+                continue;
+            }
+
+            validEnvelopes.Add(env);
+            results.Add(new { index = i, status = "accepted" });
         }
 
-        return Ok(new { submitted = request.Envelopes.Count });
+        if (validEnvelopes.Count > 0)
+        {
+            var submitResults = await _envelopeService.SubmitEnvelopesAsync(
+                userId.Value, request.SenderDeviceId, validEnvelopes);
+
+            // Merge service-level results (dedup/queue-full) back into the response
+            var submitResultMap = submitResults.ToDictionary(r => r.EnvelopeId);
+            for (int i = 0; i < results.Count; i++)
+            {
+                var result = (dynamic)results[i];
+                if (result.status == "accepted")
+                {
+                    var env = request.Envelopes[(int)result.index];
+                    if (submitResultMap.TryGetValue(env.EnvelopeId, out var sr) && sr.Status != "accepted")
+                    {
+                        results[i] = new { index = (int)result.index, status = sr.Status, error = sr.Error ?? "" };
+                    }
+                }
+            }
+
+            // Notify each destination user via SignalR group — only for truly accepted envelopes
+            var acceptedIds = submitResults
+                .Where(r => r.Status == "accepted")
+                .Select(r => r.EnvelopeId)
+                .ToHashSet();
+
+            foreach (var env in validEnvelopes.Where(e => acceptedIds.Contains(e.EnvelopeId)))
+            {
+                await _hubContext.Clients.Group($"user_{env.DestinationUserId}")
+                    .SendAsync("NewEnvelope", new
+                    {
+                        destinationDeviceId = env.DestinationDeviceId,
+                        timestamp = DateTime.UtcNow
+                    });
+            }
+        }
+
+        var acceptedCount = results.Count(r => ((dynamic)r).status == "accepted");
+        return Ok(new { submitted = acceptedCount, results });
     }
 
     /// <summary>
     /// Fetch queued (undelivered) envelopes for the current device.
     /// </summary>
     [HttpGet("{deviceId:int}")]
+    [EnableRateLimiting("envelopes")]
     public async Task<IActionResult> FetchQueued(int deviceId, [FromQuery] int limit = 100)
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+
+        // Security: verify device belongs to the authenticated user
+        var device = await _unitOfWork.Devices.GetDeviceAsync(userId.Value, deviceId);
+        if (device == null)
+            return StatusCode(403, new { error = "DeviceId does not belong to the authenticated user." });
 
         var envelopes = await _envelopeService.FetchQueuedAsync(userId.Value, deviceId, limit);
 
@@ -85,10 +161,16 @@ public class EnvelopesController : ControllerBase
     /// Acknowledge receipt of envelopes. Server deletes them after acknowledgment.
     /// </summary>
     [HttpPost("ack/{deviceId:int}")]
+    [EnableRateLimiting("envelopes")]
     public async Task<IActionResult> Acknowledge(int deviceId, [FromBody] AcknowledgeEnvelopesDto dto)
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+
+        // Security: verify device belongs to the authenticated user
+        var device = await _unitOfWork.Devices.GetDeviceAsync(userId.Value, deviceId);
+        if (device == null)
+            return StatusCode(403, new { error = "DeviceId does not belong to the authenticated user." });
 
         await _envelopeService.AcknowledgeAsync(userId.Value, deviceId, dto);
         return NoContent();

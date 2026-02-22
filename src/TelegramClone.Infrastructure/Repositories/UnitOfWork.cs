@@ -1,11 +1,21 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using TelegramClone.Domain.Interfaces;
 using TelegramClone.Infrastructure.Data;
 
 namespace TelegramClone.Infrastructure.Repositories;
 
+/// <summary>No-op disposable returned when the provider does not support transactions (e.g. InMemory).</summary>
+internal sealed class NullAsyncDisposable : IAsyncDisposable
+{
+    public static readonly NullAsyncDisposable Instance = new();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
 public class UnitOfWork : IUnitOfWork
 {
     private readonly TelegramDbContext _context;
+    private IDbContextTransaction? _currentTransaction;
 
     public IUserRepository Users { get; }
     public IChatRepository Chats { get; }
@@ -35,5 +45,39 @@ public class UnitOfWork : IUnitOfWork
 
     public async Task<int> SaveChangesAsync() => await _context.SaveChangesAsync();
 
-    public void Dispose() => _context.Dispose();
+    public async Task<IAsyncDisposable> BeginTransactionAsync()
+    {
+        // InMemory provider does not support transactions
+        if (_context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+            return NullAsyncDisposable.Instance;
+
+        _currentTransaction = await _context.Database.BeginTransactionAsync();
+        return _currentTransaction;
+    }
+
+    public async Task CommitTransactionAsync()
+    {
+        if (_currentTransaction != null)
+        {
+            await _currentTransaction.CommitAsync();
+            await _currentTransaction.DisposeAsync();
+            _currentTransaction = null;
+        }
+    }
+
+    public async Task RollbackTransactionAsync()
+    {
+        if (_currentTransaction != null)
+        {
+            await _currentTransaction.RollbackAsync();
+            await _currentTransaction.DisposeAsync();
+            _currentTransaction = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _currentTransaction?.Dispose();
+        _context.Dispose();
+    }
 }

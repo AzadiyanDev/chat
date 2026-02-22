@@ -23,4 +23,14 @@ public interface IMessageEnvelopeRepository : IRepository<MessageEnvelope>
     /// Clean up expired envelopes.
     /// </summary>
     Task DeleteExpiredAsync();
+
+    /// <summary>
+    /// Count undelivered envelopes for a specific device (for queue limit enforcement).
+    /// </summary>
+    Task<int> GetQueuedCountAsync(Guid userId, int deviceId);
+
+    /// <summary>
+    /// Check if an envelope with the given dedup ID already exists for a device.
+    /// </summary>
+    Task<bool> ExistsByEnvelopeIdAsync(int destinationDeviceId, Guid envelopeId);
 }

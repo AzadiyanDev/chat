@@ -71,10 +71,31 @@ public class KeyBundleRepository : IKeyBundleRepository
 
     public async Task<OneTimePreKeyRecord?> ConsumeOneTimePreKeyAsync(Guid userId, int deviceId)
     {
-        var otpk = await _context.OneTimePreKeys
-            .Where(k => k.UserId == userId && k.DeviceId == deviceId && !k.IsConsumed)
-            .OrderBy(k => k.KeyId)
-            .FirstOrDefaultAsync();
+        OneTimePreKeyRecord? otpk;
+
+        if (_context.Database.IsSqlServer())
+        {
+            // Atomic OTPK consumption using raw SQL with locking hints.
+            // UPDLOCK: take an update lock to prevent other readers from selecting the same row
+            // ROWLOCK: lock at row level (not page/table)
+            // READPAST: skip rows locked by other transactions (prevents blocking)
+            // This ensures that concurrent requests never consume the same OTPK.
+            otpk = await _context.OneTimePreKeys
+                .FromSqlRaw(
+                    @"SELECT TOP(1) * FROM [OneTimePreKeys] WITH (UPDLOCK, ROWLOCK, READPAST)
+                      WHERE [UserId] = {0} AND [DeviceId] = {1} AND [IsConsumed] = 0
+                      ORDER BY [KeyId]",
+                    userId, deviceId)
+                .FirstOrDefaultAsync();
+        }
+        else
+        {
+            // Fallback for non-SQL Server providers (InMemory, SQLite, etc.)
+            otpk = await _context.OneTimePreKeys
+                .Where(k => k.UserId == userId && k.DeviceId == deviceId && !k.IsConsumed)
+                .OrderBy(k => k.KeyId)
+                .FirstOrDefaultAsync();
+        }
 
         if (otpk != null)
         {
