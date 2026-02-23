@@ -74,8 +74,12 @@ export class KeyStoreService {
    */
   async unlock(passphrase: string): Promise<boolean> {
     try {
-      // @ts-expect-error argon2-browser has no type declarations; ambient .d.ts provided separately
-      const argon2: typeof import('argon2-browser') = await import('argon2-browser');
+      const argon2Module = await import('argon2-browser/dist/argon2-bundled.min.js');
+      const argon2 = argon2Module.default ?? argon2Module.argon2;
+
+      if (!argon2) {
+        throw new Error('argon2 browser bundle failed to load');
+      }
 
       let salt: Uint8Array;
       const existingSalt = await this.getRaw(STORES.metadata, 'masterKeySalt');
@@ -102,10 +106,13 @@ export class KeyStoreService {
         type: argon2.ArgonType.Argon2id
       });
 
+      // Create an ArrayBuffer-backed copy to satisfy WebCrypto's BufferSource typing.
+      const rawKey = Uint8Array.from(result.hash).buffer;
+
       // Import as non-extractable AES-GCM key
       this.sessionKey = await crypto.subtle.importKey(
         'raw',
-        result.hash,
+        rawKey,
         { name: 'AES-GCM' },
         false, // non-extractable
         ['encrypt', 'decrypt']

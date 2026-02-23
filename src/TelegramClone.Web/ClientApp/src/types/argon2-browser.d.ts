@@ -31,3 +31,11 @@ declare module 'argon2-browser' {
 
   export function verify(options: Argon2VerifyOptions): Promise<boolean>;
 }
+
+declare module 'argon2-browser/dist/argon2-bundled.min.js' {
+  import type * as Argon2Browser from 'argon2-browser';
+
+  export const argon2: typeof Argon2Browser;
+  const defaultExport: typeof Argon2Browser;
+  export default defaultExport;
+}

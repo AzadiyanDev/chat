@@ -1,0 +1,99 @@
+{
+  "configVersion": 1,
+  "timestamp": 1771834521863,
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "/chunk-2DZFZTHZ.js",
+        "/chunk-3WUFMYHN.js",
+        "/chunk-7POZG4UU.js",
+        "/chunk-ANAJ3IXD.js",
+        "/chunk-E6TGZIGP.js",
+        "/chunk-EHDF2OQX.js",
+        "/chunk-HFV5FVBU.js",
+        "/chunk-II5O4U64.js",
+        "/chunk-RAFEJ6MW.js",
+        "/chunk-UASPYPGH.js",
+        "/index.html",
+        "/main-WLCKGFI6.js",
+        "/styles-X5MIWCTQ.css"
+      ],
+      "patterns": []
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "cacheQueryOptions": {
+        "ignoreVary": true
+      },
+      "urls": [
+        "/icons/azadiyan-180.png",
+        "/icons/azadiyan-192.png",
+        "/icons/azadiyan-512.png",
+        "/icons/icon-128x128.svg",
+        "/icons/icon-144x144.svg",
+        "/icons/icon-152x152.svg",
+        "/icons/icon-192x192.svg",
+        "/icons/icon-384x384.svg",
+        "/icons/icon-512x512.svg",
+        "/icons/icon-72x72.svg",
+        "/icons/icon-96x96.svg"
+      ],
+      "patterns": []
+    }
+  ],
+  "dataGroups": [],
+  "hashTable": {
+    "/chunk-2DZFZTHZ.js": "8684ab3869303302ec4722f839667b9800a4e6d3",
+    "/chunk-3WUFMYHN.js": "b109795e571e4521de62a52e5dab7de26a98e604",
+    "/chunk-7POZG4UU.js": "3777a38df59911605f32a59163551205d440c8be",
+    "/chunk-ANAJ3IXD.js": "72ebf19d1dfac04648f32001707ea05982b4b5cb",
+    "/chunk-E6TGZIGP.js": "4fc348d3f573d1d5991c00bfb21fa44fd356a378",
+    "/chunk-EHDF2OQX.js": "06b1475243f6c4f97dafa27c9872b2ce1ac6bfba",
+    "/chunk-HFV5FVBU.js": "c6c49a8b2a1ca2afa87114318558603cecc2d343",
+    "/chunk-II5O4U64.js": "26bc1e383e1c62cfdfb630c07ba39b8cc8064b29",
+    "/chunk-RAFEJ6MW.js": "bc378107db2013784f6f77e894c2f01e3f67708b",
+    "/chunk-UASPYPGH.js": "384203fb920d689b25b146f17aec18d23bf64600",
+    "/icons/azadiyan-180.png": "fcabe4bd62e0cf36c8bbe364e12949030e26e209",
+    "/icons/azadiyan-192.png": "4a7b50a5b045d34a1a3b96b392f3f9f9bd400685",
+    "/icons/azadiyan-512.png": "b12034c7be6abfdadc53b5431164b1b6d94cbb8d",
+    "/icons/icon-128x128.svg": "959f1c69fe5fc4361f56a06481b2235425008c76",
+    "/icons/icon-144x144.svg": "fb96bccc84a3035f0f32ec4a076aa233148e337a",
+    "/icons/icon-152x152.svg": "6d215b03040c97a853f36e955c2d016ef37b2c92",
+    "/icons/icon-192x192.svg": "5476914445c69933ea721259c5b2d25e0b3e1108",
+    "/icons/icon-384x384.svg": "f823509d02e021bdb9a66b82ece48e7bbe270fe8",
+    "/icons/icon-512x512.svg": "0850fada728482ff32ee0e72c1c9e81f99918dae",
+    "/icons/icon-72x72.svg": "85e7e4fb954e2b08924fd207beca0243ccf1d53f",
+    "/icons/icon-96x96.svg": "5c20182f9775caafb2ea4203e97870db7c54f70e",
+    "/index.html": "8e372a90df26dd64bae00a127ba920e398bb155f",
+    "/main-WLCKGFI6.js": "81c00d90da51f99ea5ee3015dac519941d1dff9a",
+    "/styles-X5MIWCTQ.css": "c9c9c0e4a37b8db2e492a9aff88377dc50c09f99"
+  },
+  "navigationUrls": [
+    {
+      "positive": true,
+      "regex": "^\\/.*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*\\.[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*$"
+    },
+    {
+      "positive": false,
+      "regex": "^\\/(?:.+\\/)?[^/]*__[^/]*\\/.*$"
+    }
+  ],
+  "navigationRequestStrategy": "performance"
+}

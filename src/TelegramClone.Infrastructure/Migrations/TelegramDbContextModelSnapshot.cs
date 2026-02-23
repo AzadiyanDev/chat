@@ -425,7 +425,7 @@ namespace TelegramClone.Infrastructure.Migrations
 
                     b.HasIndex("SenderId");
 
-                    b.HasIndex("ChatId", "Timestamp");
+                    b.HasIndex("ChatId", "IsDeleted", "Timestamp");
 
                     b.ToTable("Messages");
                 });

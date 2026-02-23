@@ -409,9 +409,10 @@ export class E2eeMessageService {
       destinationUserId: this.localUserId,
       destinationDeviceId: this.localDeviceId,
       type: 2, // NormalMessage type
-      content: btoa(JSON.stringify(envelope))
+      content: btoa(JSON.stringify(envelope)),
+      envelopeId: crypto.randomUUID()
     };
-    await firstValueFrom(this.api.submitEnvelopes([envelopeBlob]));
+    await firstValueFrom(this.api.submitEnvelopes(this.localDeviceId, [envelopeBlob]));
 
     return { envelope, content };
   }
@@ -455,9 +456,10 @@ export class E2eeMessageService {
       destinationUserId: this.localUserId,
       destinationDeviceId: this.localDeviceId,
       type: 2,
-      content: btoa(JSON.stringify(envelope))
+      content: btoa(JSON.stringify(envelope)),
+      envelopeId: crypto.randomUUID()
     };
-    await firstValueFrom(this.api.submitEnvelopes([envelopeBlob]));
+    await firstValueFrom(this.api.submitEnvelopes(this.localDeviceId, [envelopeBlob]));
 
     return { envelope, content };
   }
@@ -499,9 +501,10 @@ export class E2eeMessageService {
       destinationUserId: this.localUserId,
       destinationDeviceId: this.localDeviceId,
       type: 2,
-      content: btoa(JSON.stringify(envelope))
+      content: btoa(JSON.stringify(envelope)),
+      envelopeId: crypto.randomUUID()
     };
-    await firstValueFrom(this.api.submitEnvelopes([envelopeBlob]));
+    await firstValueFrom(this.api.submitEnvelopes(this.localDeviceId, [envelopeBlob]));
 
     return { envelope, content };
   }
