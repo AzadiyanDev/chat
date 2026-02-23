@@ -31,6 +31,11 @@ export interface Reaction {
   userIds: string[];
 }
 
+export interface ForwardedFromInfo {
+  userId: string;
+  displayName: string;
+}
+
 export interface Message {
   id: string;
   chatId: string;
@@ -41,6 +46,7 @@ export interface Message {
   attachments?: Attachment[];
   voice?: VoiceNote;
   replyToId?: string;
+  forwardedFrom?: ForwardedFromInfo;
   isAnimating?: boolean;
   isDeleted?: boolean;
   reactions?: Reaction[];

@@ -33,6 +33,12 @@ public class MessagesController : ControllerBase
         return user?.Id;
     }
 
+    private async Task<bool> IsUserInChatAsync(Guid chatId, Guid userId)
+    {
+        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
+        return chat?.Participants.Any(p => p.UserId == userId) == true;
+    }
+
     private async Task BroadcastToChatParticipantsAsync(Guid chatId, string eventName, object payload)
     {
         var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
@@ -51,6 +57,10 @@ public class MessagesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetMessages(Guid chatId, [FromQuery] int limit = 50, [FromQuery] DateTime? before = null)
     {
+        var userId = await GetCurrentDomainUserIdAsync();
+        if (userId == null) return Unauthorized();
+        if (!await IsUserInChatAsync(chatId, userId.Value)) return Forbid();
+
         var messages = await _messageService.GetMessagesAsync(chatId, limit, before);
         return Ok(messages);
     }
@@ -60,6 +70,7 @@ public class MessagesController : ControllerBase
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+        if (!await IsUserInChatAsync(chatId, userId.Value)) return Forbid();
 
         var message = await _messageService.SendMessageAsync(chatId, userId.Value, dto);
 
@@ -123,6 +134,7 @@ public class MessagesController : ControllerBase
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+        if (!await IsUserInChatAsync(request.TargetChatId, userId.Value)) return Forbid();
 
         var message = await _messageService.ForwardMessageAsync(id, request.TargetChatId, userId.Value);
         if (message == null) return NotFound();

@@ -12,6 +12,7 @@ import { VoicePlayerComponent } from '../../shared/components/voice-player.compo
 import { EmojiPickerComponent } from '../../shared/components/emoji-picker.component';
 import { TypingIndicatorComponent } from '../../shared/components/typing-indicator.component';
 import { DateSeparatorComponent } from '../../shared/components/date-separator.component';
+import { ForwardMessageModalComponent } from '../../shared/components/forward-message-modal.component';
 import { ShortTimePipe } from '../../shared/pipes/time.pipe';
 import { Message, Attachment } from '../../models/chat.model';
 import { firstValueFrom } from 'rxjs';
@@ -22,7 +23,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
 @Component({
   selector: 'app-chat-room',
   standalone: true,
-  imports: [AvatarComponent, VoicePlayerComponent, EmojiPickerComponent, TypingIndicatorComponent, DateSeparatorComponent, ShortTimePipe, FormsModule],
+  imports: [AvatarComponent, VoicePlayerComponent, EmojiPickerComponent, TypingIndicatorComponent, DateSeparatorComponent, ForwardMessageModalComponent, ShortTimePipe, FormsModule],
   template: `
     <div
       class="flex flex-col h-full w-full overflow-hidden relative"
@@ -106,7 +107,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
             @let isGrouped = item.isGrouped;
             
             <div 
-              class="message-bubble flex flex-col relative z-10"
+              class="message-bubble flex relative z-10"
               [class.self-end]="isMine"
               [class.self-start]="!isMine"
               [class.max-w-\[80\%\]]="true"
@@ -120,6 +121,18 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
               [id]="'msg-' + msg.id"
               [style.opacity]="msg.isAnimating ? '0' : '1'"
             >
+              <!-- Group avatar for others' messages -->
+              @if (!isMine && !isSaved && (chat()?.type === 'group' || chat()?.type === 'channel')) {
+                <div class="shrink-0 mr-2 self-end" [class.invisible]="isGrouped">
+                  <app-avatar
+                    [src]="chatService.getUserById(msg.senderId)?.avatarUrl"
+                    [name]="chatService.getUserById(msg.senderId)?.name || ''"
+                    size="xs"
+                  ></app-avatar>
+                </div>
+              }
+
+              <div class="flex flex-col min-w-0 flex-1">
               <!-- Reply Reference -->
               @if (msg.replyToId) {
                 @let replyMsg = chatService.getMessageById(msg.replyToId);
@@ -151,6 +164,14 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                 @if (!isMine && !isSaved && (chat()?.type === 'group' || chat()?.type === 'channel') && !isGrouped) {
                   <div class="text-xs font-semibold text-telegram-primary mb-0.5">
                     {{ chatService.getUserById(msg.senderId)?.name }}
+                  </div>
+                }
+
+                <!-- Forwarded from label -->
+                @if (msg.forwardedFrom) {
+                  <div class="flex items-center gap-1 text-xs mb-0.5 italic" [class]="isMine ? 'text-white/70' : 'text-telegram-muted'">
+                    <i class="ph ph-share text-[11px]"></i>
+                    <span>Forwarded from {{ msg.forwardedFrom.displayName }}</span>
                   </div>
                 }
 
@@ -275,6 +296,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                   }
                 </div>
               }
+              </div><!-- /flex-col wrapper -->
             </div>
           }
         }
@@ -457,6 +479,14 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
           </div>
         </div>
       }
+
+      <!-- Forward Message Modal -->
+      <app-forward-message-modal
+        [message]="forwardModalMessage()"
+        [visible]="showForwardModal()"
+        (chatSelected)="onForwardChatSelected($event)"
+        (closed)="onForwardModalClosed()"
+      ></app-forward-message-modal>
 
       <!-- Emoji Picker -->
       @if (showEmojiPicker()) {
@@ -675,6 +705,10 @@ export class ChatRoomComponent implements OnDestroy {
   contextMenuMsg = signal<Message | null>(null);
   contextReactionEmojis = CONTEXT_REACTION_EMOJIS;
   private isClosingContextPreview = false;
+
+  // Forward modal
+  forwardModalMessage = signal<Message | null>(null);
+  showForwardModal = computed(() => !!this.forwardModalMessage());
 
   // Header peer profile preview
   showPeerProfileCard = signal(false);
@@ -1469,25 +1503,32 @@ export class ChatRoomComponent implements OnDestroy {
   }
 
   private forwardMessage(msg: Message) {
-    const hasPayload = !!msg.text || !!msg.voice;
-    if (!hasPayload) return;
-    const tempId = 'm_' + Math.random().toString(36).substring(2, 9);
-    this.chatService.addMessage({
-      id: tempId,
-      chatId: this.chatId,
-      senderId: this.chatService.currentUser().id,
-      text: msg.text ? `Forwarded:\n${msg.text}` : undefined,
-      timestamp: Date.now(),
-      status: 'sent',
-      replyToId: msg.id,
-      voice: msg.voice ? { ...msg.voice } : undefined
-    });
-    this.audioService.playSendSound();
-    setTimeout(() => {
-      this.scrollToBottom();
-      const bubble = document.getElementById('msg-' + tempId);
-      if (bubble) this.animationService.popInMessage(bubble);
-    }, 50);
+    // Open the forward modal instead of the old stub
+    this.forwardModalMessage.set(msg);
+  }
+
+  async onForwardChatSelected(targetChatId: string) {
+    const msg = this.forwardModalMessage();
+    if (!msg) return;
+
+    const hasAttachment = (msg.attachments && msg.attachments.length > 0) || !!msg.voice;
+    if (hasAttachment && !msg.text) {
+      // Phase 1: attachment-only forwarding not supported
+      console.warn('Forwarding attachments without text is not yet supported');
+      this.forwardModalMessage.set(null);
+      return;
+    }
+
+    const success = await this.chatService.forwardMessage(targetChatId, msg);
+    this.forwardModalMessage.set(null);
+
+    if (success) {
+      this.audioService.playSendSound();
+    }
+  }
+
+  onForwardModalClosed() {
+    this.forwardModalMessage.set(null);
   }
 
   private animateContextPreview(msgId: string) {

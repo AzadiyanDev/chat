@@ -29,6 +29,10 @@ public class ChatAppService : IChatAppService
         var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
         if (chat == null) return null;
 
+        // GRP-04: Only participants may access a chat
+        if (!chat.Participants.Any(p => p.UserId == userId))
+            return null;
+
         var dto = _mapper.Map<ChatDto>(chat);
         return dto;
     }

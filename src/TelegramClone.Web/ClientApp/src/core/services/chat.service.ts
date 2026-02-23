@@ -1,10 +1,11 @@
 import { Injectable, signal, computed, inject, effect } from '@angular/core';
-import { Chat, Message, User, Reaction, Attachment } from '../../models/chat.model';
+import { Chat, Message, User, Reaction, Attachment, ForwardedFromInfo } from '../../models/chat.model';
 import { VoiceStorageService } from './voice-storage.service';
 import { AudioService } from './audio.service';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
 import { SignalRService } from './signalr.service';
+import { E2eeMessageService } from './e2ee-message.service';
 
 const STATUS_MAP: Record<number, Message['status']> = { 0: 'sending', 1: 'sent', 2: 'delivered', 3: 'seen' };
 const TYPE_MAP: Record<number, Chat['type']> = { 0: 'direct', 1: 'group', 2: 'channel', 3: 'saved' };
@@ -48,6 +49,7 @@ export class ChatService {
   private api = inject(ApiService);
   private auth = inject(AuthService);
   private hub = inject(SignalRService);
+  private e2ee = inject(E2eeMessageService);
 
   /** Same signal interface — delegates to AuthService */
   currentUser = computed<User>(() => {
@@ -68,6 +70,7 @@ export class ChatService {
 
   constructor() {
     this.setupSignalRHandlers();
+    this.setupE2eeReceive();
 
     // Auto-initialize when auth session resolves
     effect(() => {
@@ -168,6 +171,47 @@ export class ChatService {
     this.hub.onMessageStatusChanged((messageId, status) => {
       this.updateMessage(messageId, { status: this.normalizeMessageStatus(status) });
     });
+  }
+
+  // ═══════════════════════════════════════════
+  //  E2EE decrypted message receive pipeline
+  // ═══════════════════════════════════════════
+
+  private setupE2eeReceive() {
+    this.e2ee.onDecryptedMessages = (plaintexts) => {
+      for (const pt of plaintexts) {
+        // Skip own messages (already added optimistically)
+        if (this.sameId(pt.senderId, this.currentUser().id)) continue;
+
+        // Skip non-message payloads (reactions, receipts)
+        if (pt.reaction || pt.receipt) continue;
+
+        const message: Message = {
+          id: 'e2ee_' + Math.random().toString(36).substring(2, 9),
+          chatId: pt.chatId,
+          senderId: pt.senderId,
+          text: pt.body,
+          timestamp: pt.timestamp || Date.now(),
+          status: 'delivered',
+          replyToId: pt.replyToId,
+          forwardedFrom: pt.forwardedFrom ? {
+            userId: pt.forwardedFrom.userId,
+            displayName: pt.forwardedFrom.displayName
+          } : undefined
+        };
+
+        const chatExists = this.chats().some(c => this.sameId(c.id, message.chatId));
+        this.messages.update(msgs => this.upsertMessages(msgs, [message]));
+
+        if (chatExists) {
+          this.applyIncomingMessageToExistingChat(message);
+        } else {
+          this.loadIncomingChat(message);
+        }
+
+        this.audio.playReceiveSound();
+      }
+    };
   }
 
   // ═══════════════════════════════════════════
@@ -278,6 +322,10 @@ export class ChatService {
         storageKey: d.voice.storageKey
       } : undefined,
       replyToId: d.replyToId ? String(d.replyToId) : undefined,
+      forwardedFrom: d.forwardedFrom ? {
+        userId: String(d.forwardedFrom.userId ?? ''),
+        displayName: String(d.forwardedFrom.displayName ?? '')
+      } : undefined,
       isDeleted: d.isDeleted ?? false,
       reactions: (d.reactions || []).map((r: any) => ({
         emoji: r.emoji,
@@ -574,6 +622,119 @@ export class ChatService {
     } catch (err) {
       console.error('Failed to start direct chat:', err);
       return null;
+    }
+  }
+
+  /**
+   * Create a group chat with multiple participants.
+   */
+  async createGroupChat(name: string, participantIds: string[]): Promise<string | null> {
+    try {
+      const raw = await this.api.createChat({
+        type: 'Group',
+        name,
+        participantIds
+      }).toPromise();
+      if (!raw) return null;
+      const chat = this.mapChat(raw);
+      this.chats.update(chats => {
+        const existing = chats.find(c => this.sameId(c.id, chat.id));
+        if (existing) return chats;
+        return this.sortChats([chat, ...chats]);
+      });
+      for (const p of chat.participants) this.usersCache.set(p.id, p);
+      this.hub.joinChat(chat.id).catch(() => {});
+      return chat.id;
+    } catch (err) {
+      console.error('Failed to create group chat:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Forward a message to another chat using E2EE re-encryption.
+   * Returns true on success, false if forwarding is not possible.
+   */
+  async forwardMessage(targetChatId: string, originalMessage: Message): Promise<boolean> {
+    // Phase 1: only text forwarding supported
+    if (!originalMessage.text) {
+      console.warn('Forward: only text messages are supported in Phase 1');
+      return false;
+    }
+
+    const targetChat = this.getChatById(targetChatId);
+    if (!targetChat) {
+      console.error('Forward: target chat not found');
+      return false;
+    }
+
+    // Get the original sender's display name
+    const senderUser = this.getUserById(originalMessage.senderId);
+    const displayName = senderUser?.name || 'Unknown';
+
+    // Build recipient list (all participants except self)
+    const recipientUserIds = targetChat.participants
+      .filter(p => !this.sameId(p.id, this.currentUser().id))
+      .map(p => p.id);
+
+    // For saved messages, handle differently (no E2EE recipients)
+    if (targetChat.type === 'saved') {
+      // Add as local message with forwardedFrom
+      const tempId = 'm_' + Math.random().toString(36).substring(2, 9);
+      this.addMessage({
+        id: tempId,
+        chatId: targetChatId,
+        senderId: this.currentUser().id,
+        text: originalMessage.text,
+        timestamp: Date.now(),
+        status: 'sent',
+        forwardedFrom: { userId: originalMessage.senderId, displayName }
+      });
+      return true;
+    }
+
+    try {
+      // Create forwarded message optimistically with forwardedFrom label
+      const tempId = 'm_' + Math.random().toString(36).substring(2, 9);
+      const forwarded: Message = {
+        id: tempId,
+        chatId: targetChatId,
+        senderId: this.currentUser().id,
+        text: originalMessage.text,
+        timestamp: Date.now(),
+        status: 'sending',
+        forwardedFrom: { userId: originalMessage.senderId, displayName }
+      };
+      this.messages.update(msgs => this.upsertMessages(msgs, [forwarded]));
+      this.chats.update(chats => {
+        const idx = chats.findIndex(c => this.sameId(c.id, targetChatId));
+        if (idx === -1) return chats;
+        const updated = { ...chats[idx], lastMessage: forwarded, unreadCount: 0 };
+        const newChats = [...chats];
+        newChats.splice(idx, 1);
+        const insertIndex = newChats.filter(c => c.isPinned || c.type === 'saved').length;
+        newChats.splice(insertIndex, 0, updated);
+        return newChats;
+      });
+
+      // E2EE re-encrypt and send
+      await this.e2ee.sendForwardedMessage(
+        targetChatId,
+        originalMessage.text,
+        recipientUserIds,
+        {
+          userId: originalMessage.senderId,
+          displayName,
+          originalTimestamp: originalMessage.timestamp
+        }
+      );
+
+      this.updateMessage(tempId, { status: 'sent' });
+      this.audio.playSendSound();
+      return true;
+    } catch (err) {
+      console.error('Forward failed:', err);
+      return false;
     }
   }
 

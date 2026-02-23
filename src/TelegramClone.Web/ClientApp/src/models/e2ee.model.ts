@@ -63,6 +63,12 @@ export interface EnvelopeResponse {
 
 // ──── Plaintext Content (inside E2EE envelope, after decryption) ────
 
+export interface ForwardedFrom {
+  userId: string;
+  displayName: string;
+  originalTimestamp?: number;
+}
+
 export interface PlaintextContent {
   body?: string;
   attachments?: AttachmentPointer[];
@@ -70,6 +76,7 @@ export interface PlaintextContent {
   reaction?: { emoji: string; targetMessageId: string };
   receipt?: { type: 'delivery' | 'read'; targetMessageIds: string[] };
   replyToId?: string;
+  forwardedFrom?: ForwardedFrom;
   timestamp: number;
   chatId: string;
   senderId: string;

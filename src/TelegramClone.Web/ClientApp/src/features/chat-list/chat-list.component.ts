@@ -7,6 +7,7 @@ import { AnimationService } from '../../core/services/animation.service';
 import { PwaService } from '../../core/services/pwa.service';
 import { AvatarComponent } from '../../shared/components/avatar.component';
 import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component';
+import { CreateGroupModalComponent } from '../../shared/components/create-group-modal.component';
 import { ShortTimePipe } from '../../shared/pipes/time.pipe';
 
 declare var gsap: any;
@@ -14,7 +15,7 @@ declare var gsap: any;
 @Component({
   selector: 'app-chat-list',
   standalone: true,
-  imports: [AvatarComponent, SkeletonLoaderComponent, ShortTimePipe],
+  imports: [AvatarComponent, SkeletonLoaderComponent, CreateGroupModalComponent, ShortTimePipe],
   template: `
     <div class="flex flex-col h-screen bg-gray-50 dark:bg-telegram-bg w-full" id="chat-list-container">
       
@@ -285,9 +286,18 @@ declare var gsap: any;
                   <i class="ph ph-chat-circle-dots text-lg"></i>
                   چت جدید
                 </span>
-                <button class="w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors active:scale-90" (click)="closeNewChatModal()">
-                  <i class="ph ph-x text-lg"></i>
-                </button>
+                <div class="flex items-center gap-1">
+                  <button
+                    class="px-2 py-1 rounded-lg text-xs font-medium bg-telegram-primary/10 text-telegram-primary hover:bg-telegram-primary/20 transition-colors active:scale-90 flex items-center gap-1"
+                    (click)="openCreateGroupModal()"
+                  >
+                    <i class="ph ph-users-three text-sm"></i>
+                    Group
+                  </button>
+                  <button class="w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors active:scale-90" (click)="closeNewChatModal()">
+                    <i class="ph ph-x text-lg"></i>
+                  </button>
+                </div>
               </div>
 
               <!-- Search island -->
@@ -360,6 +370,14 @@ declare var gsap: any;
         </div>
       }
 
+      <!-- Create Group Modal -->
+      @if (showCreateGroupModal()) {
+        <app-create-group-modal
+          (closed)="onCreateGroupClosed()"
+          (groupCreated)="onGroupCreated($event)"
+        ></app-create-group-modal>
+      }
+
       <!-- Install PWA Banner -->
       @if (pwa.canInstall()) {
         <div class="fixed bottom-24 left-4 right-4 z-20 flex items-center gap-3 px-4 py-3 bg-white/90 dark:bg-telegram-surface rounded-2xl border border-gray-200 dark:border-gray-700/50 shadow-xl" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
@@ -428,6 +446,9 @@ export class ChatListComponent {
   isSearchingUsers = signal(false);
   private searchDebounceTimer: any = null;
   private isClosingNewChatModal = false;
+
+  // Create group modal state
+  showCreateGroupModal = signal(false);
 
   nonArchivedChats = this.chatService.getNonArchivedChats();
   
@@ -684,6 +705,60 @@ export class ChatListComponent {
       this.showNewChatModal.set(false);
       this.isClosingNewChatModal = false;
       this.router.navigate(['/chat', chatId]);
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  //  Create Group Modal
+  // ═══════════════════════════════════════════
+
+  openCreateGroupModal() {
+    this.closeNewChatModal();
+    setTimeout(() => {
+      this.showCreateGroupModal.set(true);
+      // Wait for DOM then animate
+      setTimeout(() => {
+        const modal = document.querySelector('app-create-group-modal');
+        if (modal) {
+          const comp = (modal as any).__ngContext__?.[0] ?? null;
+          // fallback: animate from DOM directly
+          this.animateCreateGroupModalIn();
+        }
+      }, 0);
+    }, 200);
+  }
+
+  onCreateGroupClosed() {
+    this.showCreateGroupModal.set(false);
+  }
+
+  onGroupCreated(chatId: string) {
+    this.showCreateGroupModal.set(false);
+    this.router.navigate(['/chat', chatId]);
+  }
+
+  private animateCreateGroupModalIn() {
+    const backdrop = document.getElementById('creategroup-overlay-backdrop');
+    const card = document.getElementById('creategroup-overlay-card');
+    const island = document.getElementById('creategroup-overlay-island');
+    if (!backdrop || !card || typeof gsap === 'undefined') return;
+
+    gsap.set(backdrop, { opacity: 0 });
+    gsap.set(card, { opacity: 0, y: 24, scale: 0.94 });
+
+    const tl = gsap.timeline({ defaults: { overwrite: 'auto' } });
+    tl.to(backdrop, { opacity: 1, duration: 0.22, ease: 'power1.out' }, 0);
+    tl.to(card, { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: 'back.out(1.25)' }, 0.08);
+
+    if (island) {
+      const fields = island.querySelectorAll('.grp-field');
+      if (fields.length > 0) {
+        tl.fromTo(fields,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: 0.22, stagger: 0.04, ease: 'power2.out' },
+          0.18
+        );
+      }
     }
   }
 

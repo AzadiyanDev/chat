@@ -8,7 +8,8 @@ import { ApiService } from './api.service';
 import { SignalRService } from './signalr.service';
 import type {
   PlaintextContent, SubmitEnvelope, EnvelopeResponse,
-  EnvelopeType, KeyBundleResponse, AttachmentPointer, VoicePointer
+  EnvelopeType, KeyBundleResponse, AttachmentPointer, VoicePointer,
+  ForwardedFrom
 } from '../../models/e2ee.model';
 
 const PREKEY_LOW_THRESHOLD = 20;
@@ -74,6 +75,27 @@ export class E2eeMessageService {
       chatId,
       senderId: this.localUserId,
       replyToId
+    };
+
+    await this.sendToRecipients(content, recipientUserIds);
+  }
+
+  /**
+   * Encrypt and send a forwarded text message to all devices of all participants.
+   * Builds a new PlaintextContent with forwardedFrom metadata and re-encrypts for the target chat.
+   */
+  async sendForwardedMessage(
+    chatId: string,
+    text: string,
+    recipientUserIds: string[],
+    forwardedFrom: ForwardedFrom
+  ): Promise<void> {
+    const content: PlaintextContent = {
+      body: text,
+      timestamp: Date.now(),
+      chatId,
+      senderId: this.localUserId,
+      forwardedFrom
     };
 
     await this.sendToRecipients(content, recipientUserIds);
@@ -313,10 +335,17 @@ export class E2eeMessageService {
     }
   }
 
+  /** Callback to process decrypted messages — set by ChatService */
+  onDecryptedMessages: ((messages: PlaintextContent[]) => void) | null = null;
+
   private startEnvelopePolling(): void {
     // Listen for SignalR push notifications (canonical event: "NewEnvelope")
     this.signalR.onEnvelopeReady((_data) => {
-      this.fetchAndDecrypt().catch(err =>
+      this.fetchAndDecrypt().then(messages => {
+        if (messages.length > 0 && this.onDecryptedMessages) {
+          this.onDecryptedMessages(messages);
+        }
+      }).catch(err =>
         console.error('Envelope fetch failed:', err)
       );
     });
