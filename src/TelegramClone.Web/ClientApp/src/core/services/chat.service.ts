@@ -66,6 +66,8 @@ export class ChatService {
   private loadedChatMessages = new Set<string>();
   private loadingIncomingChats = new Set<string>();
   private tempToPersistedMessageIds = new Map<string, string>();
+  /** Cache for getMessagesForChat computed signals — avoids creating a new computed per call */
+  private messagesForChatCache = new Map<string, ReturnType<typeof computed<Message[]>>>();
   private initialized = false;
 
   constructor() {
@@ -86,6 +88,7 @@ export class ChatService {
         this.loadedChatMessages.clear();
         this.loadingIncomingChats.clear();
         this.tempToPersistedMessageIds.clear();
+        this.messagesForChatCache.clear();
       }
     });
   }
@@ -357,15 +360,30 @@ export class ChatService {
   getMessagesForChat(chatId: string) {
     // Trigger lazy load if not yet loaded
     this.ensureMessagesLoaded(chatId);
-    return computed(() =>
-      this.messages()
-        .filter(m => this.sameId(m.chatId, chatId) && !m.isDeleted)
-        .sort((a, b) => a.timestamp - b.timestamp)
-    );
+    // Return cached computed signal to avoid creating a new one each call
+    let cached = this.messagesForChatCache.get(chatId);
+    if (!cached) {
+      cached = computed(() =>
+        this.messages()
+          .filter(m => this.sameId(m.chatId, chatId) && !m.isDeleted)
+          .sort((a, b) => a.timestamp - b.timestamp)
+      );
+      this.messagesForChatCache.set(chatId, cached);
+    }
+    return cached;
   }
 
+  /** O(1) message lookup by ID — avoids linear scan in template per-item calls */
+  messagesByIdMap = computed(() => {
+    const map = new Map<string, Message>();
+    for (const m of this.messages()) {
+      map.set(m.id, m);
+    }
+    return map;
+  });
+
   getMessageById(messageId: string): Message | undefined {
-    return this.messages().find(m => this.sameId(m.id, messageId));
+    return this.messagesByIdMap().get(messageId);
   }
 
   getParticipant(chat: Chat): User | undefined {
@@ -872,11 +890,18 @@ export class ChatService {
     if (cached) {
       this.usersCache.set(userId, { ...cached, isOnline, lastSeen: isOnline ? undefined : Date.now() });
     }
-    this.chats.update(chats => chats.map(chat => ({
-      ...chat,
-      participants: chat.participants.map(p =>
-        this.sameId(p.id, userId) ? { ...p, isOnline, lastSeen: isOnline ? undefined : Date.now() } : p
-      )
-    })));
+    // Targeted update: only spread chats that contain this user as a participant
+    this.chats.update(chats => {
+      let changed = false;
+      const result = chats.map(chat => {
+        const idx = chat.participants.findIndex(p => this.sameId(p.id, userId));
+        if (idx === -1) return chat; // Unchanged — same reference
+        changed = true;
+        const newParticipants = [...chat.participants];
+        newParticipants[idx] = { ...newParticipants[idx], isOnline, lastSeen: isOnline ? undefined : Date.now() };
+        return { ...chat, participants: newParticipants };
+      });
+      return changed ? result : chats; // Avoid new array reference if nothing changed
+    });
   }
 }

@@ -12,6 +12,7 @@ public class MessageEnvelopeRepository : Repository<MessageEnvelope>, IMessageEn
     public async Task<IEnumerable<MessageEnvelope>> GetQueuedEnvelopesAsync(Guid userId, int deviceId, int limit = 100)
     {
         return await _dbSet
+            .AsNoTracking()
             .Where(e => e.DestinationUserId == userId
                      && e.DestinationDeviceId == deviceId
                      && !e.IsDelivered
@@ -47,6 +48,7 @@ public class MessageEnvelopeRepository : Repository<MessageEnvelope>, IMessageEn
     public async Task<int> GetQueuedCountAsync(Guid userId, int deviceId)
     {
         return await _dbSet
+            .AsNoTracking()
             .CountAsync(e => e.DestinationUserId == userId
                          && e.DestinationDeviceId == deviceId
                          && !e.IsDelivered);
@@ -55,6 +57,19 @@ public class MessageEnvelopeRepository : Repository<MessageEnvelope>, IMessageEn
     public async Task<bool> ExistsByEnvelopeIdAsync(int destinationDeviceId, Guid envelopeId)
     {
         return await _dbSet
+            .AsNoTracking()
             .AnyAsync(e => e.DestinationDeviceId == destinationDeviceId && e.EnvelopeId == envelopeId);
+    }
+
+    /// <summary>Batch dedup check: returns the set of envelopeIds that already exist for a given device.</summary>
+    public async Task<HashSet<Guid>> ExistingEnvelopeIdsAsync(int destinationDeviceId, IEnumerable<Guid> envelopeIds)
+    {
+        var idList = envelopeIds.ToList();
+        var existing = await _dbSet
+            .AsNoTracking()
+            .Where(e => e.DestinationDeviceId == destinationDeviceId && idList.Contains(e.EnvelopeId))
+            .Select(e => e.EnvelopeId)
+            .ToListAsync();
+        return new HashSet<Guid>(existing);
     }
 }

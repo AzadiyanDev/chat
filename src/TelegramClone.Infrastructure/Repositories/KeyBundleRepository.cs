@@ -19,6 +19,7 @@ public class KeyBundleRepository : IKeyBundleRepository
     public async Task<IdentityKeyRecord?> GetIdentityKeyAsync(Guid userId, int deviceId)
     {
         return await _context.IdentityKeys
+            .AsNoTracking()
             .FirstOrDefaultAsync(k => k.UserId == userId && k.DeviceId == deviceId);
     }
 
@@ -42,6 +43,7 @@ public class KeyBundleRepository : IKeyBundleRepository
     public async Task<SignedPreKeyRecord?> GetSignedPreKeyAsync(Guid userId, int deviceId)
     {
         return await _context.SignedPreKeys
+            .AsNoTracking()
             .Where(k => k.UserId == userId && k.DeviceId == deviceId)
             .OrderByDescending(k => k.KeyId)
             .FirstOrDefaultAsync();
@@ -57,6 +59,7 @@ public class KeyBundleRepository : IKeyBundleRepository
     public async Task<KyberPreKeyRecord?> GetKyberPreKeyAsync(Guid userId, int deviceId)
     {
         return await _context.KyberPreKeys
+            .AsNoTracking()
             .Where(k => k.UserId == userId && k.DeviceId == deviceId)
             .OrderByDescending(k => k.KeyId)
             .FirstOrDefaultAsync();
@@ -114,16 +117,15 @@ public class KeyBundleRepository : IKeyBundleRepository
     public async Task<int> GetAvailableOneTimePreKeyCountAsync(Guid userId, int deviceId)
     {
         return await _context.OneTimePreKeys
+            .AsNoTracking()
             .CountAsync(k => k.UserId == userId && k.DeviceId == deviceId && !k.IsConsumed);
     }
 
     public async Task RemoveConsumedPreKeysAsync(Guid userId, int deviceId)
     {
-        var consumed = await _context.OneTimePreKeys
+        await _context.OneTimePreKeys
             .Where(k => k.UserId == userId && k.DeviceId == deviceId && k.IsConsumed)
-            .ToListAsync();
-
-        _context.OneTimePreKeys.RemoveRange(consumed);
+            .ExecuteDeleteAsync();
     }
 
     // ──── Device IDs ────
@@ -131,9 +133,50 @@ public class KeyBundleRepository : IKeyBundleRepository
     public async Task<IEnumerable<int>> GetDeviceIdsForUserAsync(Guid userId)
     {
         return await _context.IdentityKeys
+            .AsNoTracking()
             .Where(k => k.UserId == userId)
             .Select(k => k.DeviceId)
             .Distinct()
             .ToListAsync();
+    }
+
+    // ──── Batch Fetch (avoids N+1 in FetchAllDeviceBundlesAsync) ────
+
+    public async Task<Dictionary<int, IdentityKeyRecord>> GetIdentityKeysForDevicesAsync(Guid userId, IEnumerable<int> deviceIds)
+    {
+        var ids = deviceIds.ToList();
+        return await _context.IdentityKeys
+            .AsNoTracking()
+            .Where(k => k.UserId == userId && ids.Contains(k.DeviceId))
+            .GroupBy(k => k.DeviceId)
+            .Select(g => g.First())
+            .ToDictionaryAsync(k => k.DeviceId);
+    }
+
+    public async Task<Dictionary<int, SignedPreKeyRecord>> GetSignedPreKeysForDevicesAsync(Guid userId, IEnumerable<int> deviceIds)
+    {
+        var ids = deviceIds.ToList();
+        // Get the latest signed pre-key per device
+        var keys = await _context.SignedPreKeys
+            .AsNoTracking()
+            .Where(k => k.UserId == userId && ids.Contains(k.DeviceId))
+            .ToListAsync();
+
+        return keys
+            .GroupBy(k => k.DeviceId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(k => k.KeyId).First());
+    }
+
+    public async Task<Dictionary<int, KyberPreKeyRecord>> GetKyberPreKeysForDevicesAsync(Guid userId, IEnumerable<int> deviceIds)
+    {
+        var ids = deviceIds.ToList();
+        var keys = await _context.KyberPreKeys
+            .AsNoTracking()
+            .Where(k => k.UserId == userId && ids.Contains(k.DeviceId))
+            .ToListAsync();
+
+        return keys
+            .GroupBy(k => k.DeviceId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(k => k.KeyId).First());
     }
 }

@@ -101,13 +101,37 @@ public class KeyBundleService : IKeyBundleService
 
     public async Task<IEnumerable<KeyBundleResponseDto>> FetchAllDeviceBundlesAsync(Guid targetUserId)
     {
-        var deviceIds = await _unitOfWork.KeyBundles.GetDeviceIdsForUserAsync(targetUserId);
+        var deviceIds = (await _unitOfWork.KeyBundles.GetDeviceIdsForUserAsync(targetUserId)).ToList();
+        if (deviceIds.Count == 0) return Array.Empty<KeyBundleResponseDto>();
+
+        // Batch-fetch identity keys, signed pre-keys, and kyber pre-keys in 3 queries (instead of N×3)
+        var identityKeys = await _unitOfWork.KeyBundles.GetIdentityKeysForDevicesAsync(targetUserId, deviceIds);
+        var signedPreKeys = await _unitOfWork.KeyBundles.GetSignedPreKeysForDevicesAsync(targetUserId, deviceIds);
+        var kyberPreKeys = await _unitOfWork.KeyBundles.GetKyberPreKeysForDevicesAsync(targetUserId, deviceIds);
+
         var bundles = new List<KeyBundleResponseDto>();
 
         foreach (var deviceId in deviceIds)
         {
-            var bundle = await FetchBundleAsync(targetUserId, deviceId);
-            if (bundle != null) bundles.Add(bundle);
+            if (!identityKeys.TryGetValue(deviceId, out var ik)) continue;
+            if (!signedPreKeys.TryGetValue(deviceId, out var spk)) continue;
+            kyberPreKeys.TryGetValue(deviceId, out var kpk);
+
+            // OTPK consumption still per-device (requires atomicity with locking)
+            await using var _ = await _unitOfWork.BeginTransactionAsync();
+            var otpk = await _unitOfWork.KeyBundles.ConsumeOneTimePreKeyAsync(targetUserId, deviceId);
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+
+            bundles.Add(new KeyBundleResponseDto(
+                targetUserId,
+                deviceId,
+                ik.RegistrationId,
+                Convert.ToBase64String(ik.PublicIdentityKey),
+                new PreKeyDto(spk.KeyId, Convert.ToBase64String(spk.PublicKey), Convert.ToBase64String(spk.Signature)),
+                kpk != null ? new PreKeyDto(kpk.KeyId, Convert.ToBase64String(kpk.PublicKey), Convert.ToBase64String(kpk.Signature)) : null,
+                otpk != null ? new PreKeyDto(otpk.KeyId, Convert.ToBase64String(otpk.PublicKey), null) : null
+            ));
         }
 
         return bundles;

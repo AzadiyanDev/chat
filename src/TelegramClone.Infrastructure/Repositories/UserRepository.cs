@@ -10,14 +10,16 @@ public class UserRepository : Repository<User>, IUserRepository
     public UserRepository(TelegramDbContext context) : base(context) { }
 
     public async Task<User?> GetByIdentityIdAsync(string identityUserId)
-        => await _dbSet.FirstOrDefaultAsync(u => u.IdentityUserId == identityUserId);
+        => await _dbSet.AsNoTracking().FirstOrDefaultAsync(u => u.IdentityUserId == identityUserId);
 
     public async Task<User?> GetByUsernameAsync(string username)
-        => await _dbSet.FirstOrDefaultAsync(u => u.Username == username);
+        => await _dbSet.AsNoTracking().FirstOrDefaultAsync(u => u.Username == username);
 
     public async Task<IEnumerable<User>> SearchUsersAsync(string query)
         => await _dbSet
+            .AsNoTracking()
             .Where(u => u.Name.Contains(query) || (u.Username != null && u.Username.Contains(query)))
+            .OrderBy(u => u.Name).ThenBy(u => u.Id)
             .Take(20)
             .ToListAsync();
 

@@ -24,20 +24,26 @@ public class ChatHub : Hub
 
     private async Task<Guid?> GetDomainUserIdAsync()
     {
+        // Fast path: check in-memory cache first (avoids DB query on hot paths like typing)
+        if (ConnectionUsers.TryGetValue(Context.ConnectionId, out var cached))
+            return cached;
+
         var identityId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(identityId)) return null;
         var user = await _unitOfWork.Users.GetByIdentityIdAsync(identityId);
+        if (user != null)
+            ConnectionUsers[Context.ConnectionId] = user.Id;
         return user?.Id;
     }
 
     /// <summary>
     /// Verify that the current user is a participant of the given chat.
+    /// Uses a lightweight EXISTS query instead of loading the full Chat entity.
     /// </summary>
     private async Task<bool> IsUserInChatAsync(Guid userId, string chatId)
     {
         if (!Guid.TryParse(chatId, out var chatGuid)) return false;
-        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatGuid);
-        return chat?.Participants.Any(p => p.UserId == userId) ?? false;
+        return await _unitOfWork.Chats.IsUserParticipantAsync(chatGuid, userId);
     }
 
     public override async Task OnConnectedAsync()
@@ -54,11 +60,11 @@ public class ChatHub : Hub
                 await Clients.Others.SendAsync("UserOnline", userId.Value);
             }
 
-            // Join all user's chat groups
-            var chats = await _unitOfWork.Chats.GetUserChatsAsync(userId.Value);
-            foreach (var chat in chats)
+            // Join all user's chat groups (lightweight: only fetches IDs)
+            var chatIds = await _unitOfWork.Chats.GetUserChatIdsAsync(userId.Value);
+            foreach (var chatId in chatIds)
             {
-                await Groups.AddToGroupAsync(Context.ConnectionId, chat.Id.ToString());
+                await Groups.AddToGroupAsync(Context.ConnectionId, chatId.ToString());
             }
 
             // Register user connection for E2EE envelope notifications
@@ -191,17 +197,7 @@ public class ChatHub : Hub
 
         // Security: verify caller shares at least one chat with the target user
         if (!Guid.TryParse(targetUserId, out var targetGuid)) return;
-        var callerChats = await _unitOfWork.Chats.GetUserChatsAsync(userId.Value);
-        var hasSharedChat = false;
-        foreach (var chat in callerChats)
-        {
-            if (chat.Participants.Any(p => p.UserId == targetGuid))
-            {
-                hasSharedChat = true;
-                break;
-            }
-        }
-        if (!hasSharedChat) return;
+        if (!await _unitOfWork.Chats.ShareChatAsync(userId.Value, targetGuid)) return;
 
         await Clients.Group($"user_{targetUserId}").SendAsync("KeyBundleChanged", new
         {

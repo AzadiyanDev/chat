@@ -445,6 +445,7 @@ export class ChatListComponent {
   userSearchResults = signal<any[]>([]);
   isSearchingUsers = signal(false);
   private searchDebounceTimer: any = null;
+  private searchSub: import('rxjs').Subscription | null = null;
   private isClosingNewChatModal = false;
 
   // Create group modal state
@@ -683,7 +684,9 @@ export class ChatListComponent {
 
     this.isSearchingUsers.set(true);
     this.searchDebounceTimer = setTimeout(() => {
-      this.api.searchUsers(query.trim()).subscribe({
+      // Cancel any in-flight search to avoid stale results overwriting newer ones
+      this.searchSub?.unsubscribe();
+      this.searchSub = this.api.searchUsers(query.trim()).subscribe({
         next: (users) => {
           this.userSearchResults.set(users);
           this.isSearchingUsers.set(false);

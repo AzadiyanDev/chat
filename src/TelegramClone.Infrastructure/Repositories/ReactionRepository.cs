@@ -18,6 +18,7 @@ public class ReactionRepository : Repository<Reaction>, IReactionRepository
     public async Task<IEnumerable<Reaction>> GetMessageReactionsAsync(Guid messageId)
     {
         return await _dbSet
+            .AsNoTracking()
             .Where(r => r.MessageId == messageId)
             .ToListAsync();
     }

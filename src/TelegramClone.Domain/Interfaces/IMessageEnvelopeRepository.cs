@@ -33,4 +33,9 @@ public interface IMessageEnvelopeRepository : IRepository<MessageEnvelope>
     /// Check if an envelope with the given dedup ID already exists for a device.
     /// </summary>
     Task<bool> ExistsByEnvelopeIdAsync(int destinationDeviceId, Guid envelopeId);
+
+    /// <summary>
+    /// Batch dedup check: returns the set of envelopeIds that already exist for a given device.
+    /// </summary>
+    Task<HashSet<Guid>> ExistingEnvelopeIdsAsync(int destinationDeviceId, IEnumerable<Guid> envelopeIds);
 }

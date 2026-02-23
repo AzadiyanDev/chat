@@ -39,10 +39,15 @@
                 "scripts": true,
                 "styles": {
                   "minify": true,
-                  "inlineCritical": false
+                  "inlineCritical": true
                 },
                 "fonts": true
-              }
+              },
+              "allowedCommonJsDependencies": [
+                "argon2-browser",
+                "libsodium-wrappers-sumo",
+                "lottie-web"
+              ]
             },
             "development": {
               "optimization": false,

@@ -24,4 +24,9 @@ public interface IKeyBundleRepository
 
     // Full bundle retrieval (for session setup)
     Task<IEnumerable<int>> GetDeviceIdsForUserAsync(Guid userId);
+
+    // Batch retrieval for multi-device fetch (avoids N+1)
+    Task<Dictionary<int, IdentityKeyRecord>> GetIdentityKeysForDevicesAsync(Guid userId, IEnumerable<int> deviceIds);
+    Task<Dictionary<int, SignedPreKeyRecord>> GetSignedPreKeysForDevicesAsync(Guid userId, IEnumerable<int> deviceIds);
+    Task<Dictionary<int, KyberPreKeyRecord>> GetKyberPreKeysForDevicesAsync(Guid userId, IEnumerable<int> deviceIds);
 }
