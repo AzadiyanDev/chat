@@ -117,6 +117,10 @@ export class ApiService {
     return this.http.delete(`${this.baseUrl}/chats/${chatId}/messages/${messageId}`);
   }
 
+  editMessage(chatId: string, messageId: string, text: string): Observable<any> {
+    return this.http.put(`${this.baseUrl}/chats/${chatId}/messages/${messageId}`, { text });
+  }
+
   addReaction(chatId: string, messageId: string, emoji: string): Observable<any> {
     return this.http.post(`${this.baseUrl}/chats/${chatId}/messages/${messageId}/reactions`, { emoji });
   }

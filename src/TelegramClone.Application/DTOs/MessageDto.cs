@@ -28,6 +28,11 @@ public class SendMessageDto
     public SendVoiceDto? Voice { get; set; }
 }
 
+public class EditMessageDto
+{
+    public string Text { get; set; } = string.Empty;
+}
+
 public class SendVoiceDto
 {
     public string Url { get; set; } = string.Empty;

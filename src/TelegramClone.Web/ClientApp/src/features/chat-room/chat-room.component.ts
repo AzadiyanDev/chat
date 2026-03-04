@@ -95,7 +95,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         #messagesContainer 
         class="flex-1 overflow-y-auto px-4 pt-4 flex flex-col gap-1 relative telegram-pattern custom-scrollbar"
         style="overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;"
-        [style.paddingBottom]="replyingTo() ? '9.25rem' : '6rem'"
+        [style.paddingBottom]="(replyingTo() || editingMessage()) ? '9.25rem' : '6rem'"
       >
         @for (item of displayItems(); track item.key) {
           @if (item.type === 'date') {
@@ -325,6 +325,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
       @if (contextMenuMsg()) {
         @let activeMsg = contextMenuMsg()!;
         @let previewIsMine = chat()?.type === 'saved' ? true : activeMsg.senderId === chatService.currentUser().id;
+        @let canManageOwn = canManageOwnMessage(activeMsg);
         <div
           id="context-preview-backdrop"
           class="fixed inset-0 z-[100] flex items-center justify-center p-4"
@@ -418,13 +419,24 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                   <i class="ph ph-copy text-lg"></i>
                   <span>Copy</span>
                 </button>
-                <button
-                  class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  (click)="onContextAction('delete')"
-                >
-                  <i class="ph ph-trash text-lg"></i>
-                  <span>Delete</span>
-                </button>
+                @if (canManageOwn && activeMsg.text) {
+                  <button
+                    class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl text-xs text-black dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    (click)="onContextAction('edit')"
+                  >
+                    <i class="ph ph-pencil-simple text-lg"></i>
+                    <span>Edit</span>
+                  </button>
+                }
+                @if (canManageOwn) {
+                  <button
+                    class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    (click)="onContextAction('delete')"
+                  >
+                    <i class="ph ph-trash text-lg"></i>
+                    <span>Delete</span>
+                  </button>
+                }
               </div>
             </div>
           </div>
@@ -633,6 +645,19 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         </div>
       }
 
+      @if (editingMessage()) {
+        <div class="absolute bottom-[80px] left-3 right-3 px-3 py-2 flex items-center gap-2 z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md shadow-black/5 dark:shadow-black/20" id="edit-bar">
+          <div class="w-0.5 h-8 bg-amber-500 rounded-full shrink-0"></div>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs font-semibold text-amber-600 dark:text-amber-400">Editing message</div>
+            <div class="text-xs text-gray-500 truncate">{{ editingMessage()!.text }}</div>
+          </div>
+          <button (click)="cancelEdit()" class="p-1 text-gray-400 hover:text-gray-600 transition-colors active:scale-90">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+      }
+
       <!-- Attachment Panel — Island -->
       @if (showAttachmentPanel()) {
         <div class="absolute bottom-[80px] left-3 right-3 p-4 z-30 bg-white dark:bg-telegram-surface shadow-xl rounded-2xl"
@@ -680,7 +705,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         <div
           class="absolute z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md px-3 py-2 w-[230px] max-w-[calc(100%-1.5rem)]"
           style="left: 0.75rem;"
-          [style.bottom]="replyingTo() ? '6.3rem' : '4.55rem'"
+          [style.bottom]="(replyingTo() || editingMessage()) ? '6.3rem' : '4.55rem'"
         >
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-telegram-muted">
@@ -732,7 +757,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         <div
           class="absolute z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md px-3 py-2 w-[230px] max-w-[calc(100%-1.5rem)]"
           style="left: 0.75rem;"
-          [style.bottom]="replyingTo() ? '6.3rem' : '4.55rem'"
+          [style.bottom]="(replyingTo() || editingMessage()) ? '6.3rem' : '4.55rem'"
         >
           <div class="flex items-center justify-between text-xs mb-1">
             <span class="text-telegram-muted">Uploading voice</span>
@@ -846,6 +871,7 @@ export class ChatRoomComponent implements OnDestroy {
   // All UI state as signals for zoneless compatibility
   showAttachmentPanel = signal(false);
   replyingTo = signal<Message | null>(null);
+  editingMessage = signal<Message | null>(null);
   pendingAttachments = signal<Attachment[]>([]);
   isDraggingFiles = signal(false);
   isUploadingAttachments = signal(false);
@@ -2083,15 +2109,22 @@ export class ChatRoomComponent implements OnDestroy {
   onContextAction(action: string) {
     const msg = this.contextMenuMsg();
     if (!msg) return;
+    const canManageOwn = this.canManageOwnMessage(msg);
 
     switch (action) {
       case 'reply':
+        this.editingMessage.set(null);
         this.replyingTo.set(msg);
         setTimeout(() => {
           this.messageInput()?.nativeElement.focus();
           const bar = document.getElementById('reply-bar');
           if (bar) this.animationService.slideInFromBottom(bar, 50);
         }, 180);
+        break;
+      case 'edit':
+        if (canManageOwn) {
+          this.beginEditingMessage(msg);
+        }
         break;
       case 'copy':
         if (msg.text) {
@@ -2102,7 +2135,9 @@ export class ChatRoomComponent implements OnDestroy {
         this.forwardMessage(msg);
         break;
       case 'delete':
-        this.chatService.deleteMessage(msg.id);
+        if (canManageOwn) {
+          this.chatService.deleteMessage(msg.id);
+        }
         break;
     }
 
@@ -2241,16 +2276,72 @@ export class ChatRoomComponent implements OnDestroy {
     this.replyingTo.set(null);
   }
 
+  cancelEdit() {
+    this.editingMessage.set(null);
+    this.inputText.set('');
+    this.updateHasContentState();
+
+    const input = this.messageInput()?.nativeElement as HTMLTextAreaElement | undefined;
+    if (input) input.style.height = 'auto';
+  }
+
+  private beginEditingMessage(message: Message) {
+    if (!this.canManageOwnMessage(message)) return;
+    if (!message.text || message.text.trim().length === 0) return;
+
+    this.replyingTo.set(null);
+    this.editingMessage.set(message);
+    this.inputText.set(message.text);
+    this.updateHasContentState();
+
+    setTimeout(() => {
+      const input = this.messageInput()?.nativeElement as HTMLTextAreaElement | undefined;
+      input?.focus();
+      if (input) {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      }
+
+      const bar = document.getElementById('edit-bar');
+      if (bar) this.animationService.slideInFromBottom(bar, 50);
+    }, 120);
+  }
+
+  canManageOwnMessage(message: Message): boolean {
+    const current = this.chatService.currentUser();
+    const isMine = String(message.senderId ?? '').trim().toLowerCase() === String(current.id ?? '').trim().toLowerCase();
+    const isPersisted = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(message.id ?? '').trim()
+    );
+    const isStillSending = message.status === 'sending';
+    return isMine && isPersisted && !isStillSending;
+  }
+
   // ========== Send Message ==========
 
   async initiateSendMessage() {
+    const sourceTextEl = this.messageInput()?.nativeElement as HTMLTextAreaElement | undefined;
+    if (!sourceTextEl) return;
+
+    const editing = this.editingMessage();
     const rawText = this.inputText().trim();
     const attachments = this.pendingAttachments().map(a => ({ ...a }));
+
+    if (editing) {
+      if (rawText.length === 0) return;
+
+      const edited = this.chatService.editMessage(editing.id, rawText);
+      if (edited) {
+        this.editingMessage.set(null);
+        this.inputText.set('');
+        this.updateHasContentState();
+        sourceTextEl.style.height = 'auto';
+      }
+      return;
+    }
+
     if (rawText.length === 0 && attachments.length === 0) return;
     if (this.isAnyUploadInProgress()) return;
-
-    const sourceTextEl = this.messageInput()?.nativeElement;
-    if (!sourceTextEl) return;
 
     let uploadedAttachments = attachments;
     if (attachments.length > 0) {
@@ -2478,6 +2569,7 @@ export class ChatRoomComponent implements OnDestroy {
   onTouchEnd(e: TouchEvent, msg: Message) {
     if (this.swipingMsgId() === msg.id) {
       if (Math.abs(this.swipeX()) > 40) {
+        this.editingMessage.set(null);
         this.replyingTo.set(msg);
         this.messageInput()?.nativeElement.focus();
         if (navigator.vibrate) navigator.vibrate(50);

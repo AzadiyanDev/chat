@@ -93,12 +93,36 @@ public class MessagesController : ControllerBase
     {
         var userId = await GetCurrentDomainUserIdAsync();
         if (userId == null) return Unauthorized();
+        if (!await IsUserInChatAsync(chatId, userId.Value)) return Forbid();
 
-        var result = await _messageService.DeleteMessageAsync(id, userId.Value);
+        var result = await _messageService.DeleteMessageAsync(chatId, id, userId.Value);
         if (!result) return NotFound();
 
-        await _hubContext.Clients.Group(chatId.ToString()).SendAsync("MessageDeleted", id);
+        await BroadcastToChatParticipantsAsync(chatId, "MessageDeleted", id);
         return Ok();
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> EditMessage(Guid chatId, Guid id, [FromBody] EditMessageDto dto)
+    {
+        var userId = await GetCurrentDomainUserIdAsync();
+        if (userId == null) return Unauthorized();
+        if (!await IsUserInChatAsync(chatId, userId.Value)) return Forbid();
+
+        MessageDto? message;
+        try
+        {
+            message = await _messageService.EditMessageAsync(chatId, id, userId.Value, dto);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+
+        if (message == null) return NotFound();
+
+        await BroadcastToChatParticipantsAsync(chatId, "MessageEdited", message);
+        return Ok(message);
     }
 
     [HttpPost("{id}/reactions")]

@@ -115,8 +115,12 @@ export class ChatService {
       this.audio.playReceiveSound();
     });
 
+    this.hub.onMessageEdited((raw: any) => {
+      this.applyEditedMessage(raw);
+    });
+
     this.hub.onMessageDeleted((messageId: string) => {
-      this.updateMessage(messageId, { isDeleted: true });
+      this.markMessageDeleted(messageId);
     });
 
     this.hub.onReactionUpdated((data: any) => {
@@ -560,12 +564,51 @@ export class ChatService {
     }
   }
 
-  deleteMessage(messageId: string): boolean {
-    const msg = this.getMessageById(messageId);
+  editMessage(messageId: string, text: string): boolean {
+    const resolvedId = this.resolvePersistedMessageId(messageId);
+    if (!this.isGuidLike(resolvedId)) return false;
+
+    const msg = this.getMessageById(resolvedId);
     if (!msg) return false;
-    this.updateMessage(messageId, { isDeleted: true });
-    this.api.deleteMessage(msg.chatId, messageId).subscribe({
-      error: (err: any) => console.error('Failed to delete message:', err)
+    if (!this.sameId(msg.senderId, this.currentUser().id)) return false;
+
+    const nextText = text.trim();
+    if (!nextText) return false;
+
+    const previousText = msg.text ?? '';
+    if (previousText.trim() === nextText) return true;
+
+    this.updateMessage(resolvedId, { text: nextText });
+    this.syncChatLastMessage(msg.chatId);
+
+    this.api.editMessage(msg.chatId, resolvedId, nextText).subscribe({
+      next: (raw: any) => this.applyEditedMessage(raw),
+      error: (err: any) => {
+        this.updateMessage(resolvedId, { text: previousText });
+        this.syncChatLastMessage(msg.chatId);
+        console.error('Failed to edit message:', err);
+      }
+    });
+
+    return true;
+  }
+
+  deleteMessage(messageId: string): boolean {
+    const resolvedId = this.resolvePersistedMessageId(messageId);
+    if (!this.isGuidLike(resolvedId)) return false;
+
+    const msg = this.getMessageById(resolvedId);
+    if (!msg) return false;
+    if (!this.sameId(msg.senderId, this.currentUser().id)) return false;
+
+    const previousIsDeleted = !!msg.isDeleted;
+    this.markMessageDeleted(resolvedId);
+    this.api.deleteMessage(msg.chatId, resolvedId).subscribe({
+      error: (err: any) => {
+        this.updateMessage(resolvedId, { isDeleted: previousIsDeleted });
+        this.syncChatLastMessage(msg.chatId);
+        console.error('Failed to delete message:', err);
+      }
     });
     return true;
   }
@@ -903,8 +946,64 @@ export class ChatService {
     return String(value ?? '').trim().toLowerCase();
   }
 
+  private isGuidLike(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? '').trim());
+  }
+
+  private resolvePersistedMessageId(messageId: string): string {
+    const normalized = this.normalizeId(messageId);
+    return this.tempToPersistedMessageIds.get(normalized) ?? messageId;
+  }
+
   private sameId(a: unknown, b: unknown): boolean {
     return this.normalizeId(a) === this.normalizeId(b);
+  }
+
+  private applyEditedMessage(raw: any) {
+    const incoming = this.mapMessage(raw);
+    const existing = this.getMessageById(incoming.id);
+    const edited: Message = existing
+      ? { ...incoming, status: existing.status, isAnimating: existing.isAnimating }
+      : incoming;
+
+    this.messages.update(msgs => this.upsertMessages(msgs, [edited]));
+    this.chats.update(chats => {
+      let changed = false;
+      const next = chats.map(chat => {
+        if (!this.sameId(chat.id, edited.chatId)) return chat;
+        if (!chat.lastMessage || !this.sameId(chat.lastMessage.id, edited.id)) return chat;
+        changed = true;
+        return { ...chat, lastMessage: edited };
+      });
+      return changed ? this.sortChats(next) : chats;
+    });
+  }
+
+  private markMessageDeleted(messageId: string) {
+    const resolvedId = this.resolvePersistedMessageId(messageId);
+    const msg = this.getMessageById(resolvedId);
+    if (!msg) {
+      this.updateMessage(resolvedId, { isDeleted: true });
+      return;
+    }
+
+    this.updateMessage(resolvedId, { isDeleted: true });
+    this.syncChatLastMessage(msg.chatId);
+  }
+
+  private syncChatLastMessage(chatId: string) {
+    const latest = this.messages()
+      .filter(m => this.sameId(m.chatId, chatId) && !m.isDeleted)
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+    this.chats.update(chats => {
+      const next = chats.map(chat =>
+        this.sameId(chat.id, chatId)
+          ? { ...chat, lastMessage: latest }
+          : chat
+      );
+      return this.sortChats(next);
+    });
   }
 
   private upsertMessages(current: Message[], incoming: Message[]): Message[] {

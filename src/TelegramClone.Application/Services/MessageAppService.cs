@@ -75,10 +75,27 @@ public class MessageAppService : IMessageAppService
         return _mapper.Map<MessageDto>(saved!);
     }
 
-    public async Task<bool> DeleteMessageAsync(Guid messageId, Guid userId)
+    public async Task<MessageDto?> EditMessageAsync(Guid chatId, Guid messageId, Guid userId, EditMessageDto dto)
     {
         var message = await _unitOfWork.Messages.GetByIdAsync(messageId);
-        if (message == null || message.SenderId != userId) return false;
+        if (message == null || message.ChatId != chatId || message.SenderId != userId || message.IsDeleted) return null;
+
+        var updatedText = (dto.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(updatedText))
+            throw new ArgumentException("Message text cannot be empty.");
+
+        message.Text = updatedText;
+        _unitOfWork.Messages.Update(message);
+        await _unitOfWork.SaveChangesAsync();
+
+        var updated = await _unitOfWork.Messages.GetMessageWithDetailsAsync(message.Id);
+        return updated == null ? null : _mapper.Map<MessageDto>(updated);
+    }
+
+    public async Task<bool> DeleteMessageAsync(Guid chatId, Guid messageId, Guid userId)
+    {
+        var message = await _unitOfWork.Messages.GetByIdAsync(messageId);
+        if (message == null || message.ChatId != chatId || message.SenderId != userId || message.IsDeleted) return false;
 
         message.IsDeleted = true;
         _unitOfWork.Messages.Update(message);

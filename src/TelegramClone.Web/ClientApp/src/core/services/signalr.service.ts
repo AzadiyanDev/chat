@@ -15,6 +15,7 @@ export class SignalRService {
   private visibilityHandler: (() => void) | null = null;
 
   private messageHandlers: ((message: any) => void)[] = [];
+  private messageEditedHandlers: ((message: any) => void)[] = [];
   private messageDeletedHandlers: ((messageId: string) => void)[] = [];
   private reactionHandlers: ((message: any) => void)[] = [];
   private typingHandlers: ((chatId: string, userId: string) => void)[] = [];
@@ -45,6 +46,10 @@ export class SignalRService {
 
       this.connection.on('MessageDeleted', (messageId: string) => {
         this.messageDeletedHandlers.forEach(h => h(messageId));
+      });
+
+      this.connection.on('MessageEdited', (message: any) => {
+        this.messageEditedHandlers.forEach(h => h(message));
       });
 
       this.connection.on('ReactionUpdated', (message: any) => {
@@ -175,6 +180,11 @@ export class SignalRService {
   onMessageDeleted(handler: (messageId: string) => void): () => void {
     this.messageDeletedHandlers.push(handler);
     return () => { this.messageDeletedHandlers = this.messageDeletedHandlers.filter(h => h !== handler); };
+  }
+
+  onMessageEdited(handler: (message: any) => void): () => void {
+    this.messageEditedHandlers.push(handler);
+    return () => { this.messageEditedHandlers = this.messageEditedHandlers.filter(h => h !== handler); };
   }
 
   onReactionUpdated(handler: (message: any) => void): () => void {
