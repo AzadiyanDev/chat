@@ -108,7 +108,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
             @let isGrouped = item.isGrouped;
             
             <div 
-              class="message-bubble flex relative z-10"
+              class="message-bubble flex relative z-10 select-none"
               [class.self-end]="isMine"
               [class.self-start]="!isMine"
               [class.max-w-\[80\%\]]="true"
@@ -118,6 +118,8 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
               (touchmove)="onTouchMove($event, msg)"
               (touchend)="onTouchEnd($event, msg)"
               (contextmenu)="onContextMenu($event, msg)"
+              (selectstart)="preventNativeSelection($event)"
+              style="-webkit-touch-callout: none; -webkit-user-select: none; user-select: none;"
               [style.transform]="swipingMsgId() === msg.id ? 'translateX(' + swipeX() + 'px)' : 'translateX(0px)'"
               [id]="'msg-' + msg.id"
               [style.opacity]="msg.isAnimating ? '0' : '1'"
@@ -2488,6 +2490,10 @@ export class ChatRoomComponent implements OnDestroy {
       this.swipeDirectionLocked = null;
       setTimeout(() => this.swipingMsgId.set(null), 300);
     }
+  }
+
+  preventNativeSelection(event: Event) {
+    event.preventDefault();
   }
 }
 
