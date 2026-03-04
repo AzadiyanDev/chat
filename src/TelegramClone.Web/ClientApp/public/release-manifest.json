@@ -2,18 +2,18 @@
   "version": "2026.03.04-r2",
   "publishedAt": "2026-03-04",
   "notes": [
-    "Profile panel now includes a dedicated logout button.",
-    "Backend logout flow is complete so sign-out is fully enforced.",
-    "Unread message badge now updates correctly when new messages arrive.",
-    ".gitignore was tightened to reduce noisy generated files in git changes.",
-    "Mobile keyboard behavior was fixed: no black gap and only message area scrolls.",
-    "Online/offline status and last-seen timestamps are now more accurate.",
-    "Group members are visible, and members can now be added/removed with role checks.",
-    "Voice recording upload/send pipeline was fixed end-to-end.",
-    "Upload loaders and percentage progress were added for files and voice.",
-    "Theme toggle stayed on main page, and chat header action is now manual refresh fallback.",
-    "Message edit/delete was added with owner-only controls and two-way realtime sync.",
-    "Long-press no longer triggers native text selection; only app context actions are shown.",
-    "Release versioning and update modal were added with one-time-per-version display and forced update reload."
+    "افزودن دکمه خروج در پنل پروفایل.",
+    "تکمیل بک‌اند خروج برای لاگ‌اوت کامل و امن.",
+    "رفع مشکل نمایش حباب تعداد پیام‌های خوانده‌نشده.",
+    "به‌روزرسانی .gitignore برای حذف فایل‌های اضافی از تغییرات گیت.",
+    "رفع مشکل اسکرول و ناحیه سیاه هنگام باز شدن کیبورد در بعضی گوشی‌ها.",
+    "بهبود دقت وضعیت آنلاین/آفلاین و نمایش آخرین بازدید.",
+    "افزودن نمایش اعضای گروه و امکان افزودن/حذف اعضا با کنترل نقش.",
+    "رفع کامل مشکل آپلود و ارسال پیام صوتی.",
+    "افزودن لودر و درصد پیشرفت برای آپلود فایل‌ها و وویس.",
+    "حفظ دکمه تغییر تم در صفحه اصلی و تبدیل دکمه چت به رفرش پشتیبان.",
+    "افزودن قابلیت ویرایش و حذف پیام برای پیام‌های خود کاربر با همگام‌سازی دوطرفه.",
+    "رفع تداخل لانگ‌پرس با انتخاب متن پیش‌فرض سیستم و نمایش فقط منوی برنامه.",
+    "افزودن نسخه‌گذاری، مودال معرفی تغییرات و آپدیت اجباری با مدیریت کش."
   ]
 }
