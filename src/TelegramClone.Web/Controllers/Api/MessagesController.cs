@@ -72,7 +72,15 @@ public class MessagesController : ControllerBase
         if (userId == null) return Unauthorized();
         if (!await IsUserInChatAsync(chatId, userId.Value)) return Forbid();
 
-        var message = await _messageService.SendMessageAsync(chatId, userId.Value, dto);
+        MessageDto message;
+        try
+        {
+            message = await _messageService.SendMessageAsync(chatId, userId.Value, dto);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
 
         // Broadcast to all chat participants (works even if a new chat group was not joined yet)
         await BroadcastToChatParticipantsAsync(chatId, "ReceiveMessage", message);

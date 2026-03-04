@@ -19,7 +19,13 @@ public class FilesController : ControllerBase
     private static readonly HashSet<string> AllowedVoiceTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg",
-        "audio/wav", "audio/x-wav", "audio/aac", "video/webm"
+        "audio/wav", "audio/x-wav", "audio/aac", "audio/x-m4a",
+        "audio/mp3", "audio/opus", "video/webm", "video/mp4"
+    };
+
+    private static readonly HashSet<string> AllowedVoiceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".webm", ".ogg", ".oga", ".mp4", ".m4a", ".mp3", ".wav", ".aac", ".opus"
     };
 
     private const long MaxVoiceFileSize = 20 * 1024 * 1024; // 20 MB
@@ -33,7 +39,7 @@ public class FilesController : ControllerBase
         if (file.Length > MaxVoiceFileSize)
             return BadRequest("Voice file too large (max 20 MB).");
 
-        if (!AllowedVoiceTypes.Contains(file.ContentType))
+        if (!IsAllowedVoiceFile(file))
             return BadRequest("Invalid audio file type.");
 
         // Sanitize filename: strip path components, keep only safe characters
@@ -69,5 +75,32 @@ public class FilesController : ControllerBase
         await using var stream = file.OpenReadStream();
         var path = await _fileStorage.SaveAttachmentAsync(stream, file.FileName);
         return Ok(new { url = $"/uploads/{path}" });
+    }
+
+    private static bool IsAllowedVoiceFile(IFormFile file)
+    {
+        var mediaType = NormalizeMediaType(file.ContentType);
+        if (!string.IsNullOrWhiteSpace(mediaType) && AllowedVoiceTypes.Contains(mediaType))
+            return true;
+
+        var extension = Path.GetExtension(file.FileName ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(extension) && AllowedVoiceExtensions.Contains(extension))
+            return true;
+
+        return false;
+    }
+
+    private static string NormalizeMediaType(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType)) return string.Empty;
+
+        var value = contentType.Trim();
+        var separatorIndex = value.IndexOf(';');
+        if (separatorIndex >= 0)
+        {
+            value = value[..separatorIndex];
+        }
+
+        return value.Trim().ToLowerInvariant();
     }
 }

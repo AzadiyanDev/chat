@@ -15,11 +15,20 @@ export class VoiceRecorderService {
   
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
+  private recordingMimeType = '';
   
   isRecording = signal<boolean>(false);
   recordingDuration = signal<number>(0); // visible seconds
   private timerInterval: any;
   private audioCtx: AudioContext | null = null;
+  private static readonly preferredMimeTypes = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/mp4',
+    'video/webm'
+  ];
 
   private getAudioCtx(): AudioContext {
     if (!this.audioCtx) this.audioCtx = new AudioContext();
@@ -29,7 +38,11 @@ export class VoiceRecorderService {
   async startRecording(): Promise<void> {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.mediaRecorder = new MediaRecorder(stream);
+      const mimeType = this.getSupportedMimeType();
+      this.mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      this.recordingMimeType = this.mediaRecorder.mimeType || mimeType || '';
       this.audioChunks = [];
 
       this.mediaRecorder.ondataavailable = (event) => {
@@ -58,7 +71,13 @@ export class VoiceRecorderService {
 
       this.mediaRecorder.onstop = async () => {
         clearInterval(this.timerInterval);
-        const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        const mimeType = this.audioChunks[0]?.type || this.recordingMimeType || 'audio/webm';
+        const blob = new Blob(this.audioChunks, { type: mimeType });
+        if (blob.size === 0) {
+          this.cleanupRecorderState();
+          resolve(null);
+          return;
+        }
         
         let durationMs = this.recordingDuration() * 1000;
         let waveform: number[] = [];
@@ -72,18 +91,29 @@ export class VoiceRecorderService {
           // Generate 50 points of waveform
           const channelData = audioBuffer.getChannelData(0);
           const samples = 50;
-          const blockSize = Math.floor(channelData.length / samples);
+          const blockSize = Math.max(1, Math.floor(channelData.length / samples));
           for (let i = 0; i < samples; i++) {
-            let sum = 0;
-            for (let j = 0; j < blockSize; j++) {
-              sum += Math.abs(channelData[i * blockSize + j]);
+            const start = i * blockSize;
+            const end = Math.min(channelData.length, start + blockSize);
+            if (start >= end) {
+              waveform.push(0.1);
+              continue;
             }
-            waveform.push(sum / blockSize);
+
+            let sum = 0;
+            for (let j = start; j < end; j++) {
+              sum += Math.abs(channelData[j]);
+            }
+            waveform.push(sum / (end - start));
           }
           
           // Normalize to 0.1 - 1.0 range
-          const maxVal = Math.max(...waveform, 0.01);
-          waveform = waveform.map(v => Math.max(0.1, v / maxVal));
+          const finiteWaveform = waveform.filter(Number.isFinite);
+          const maxVal = Math.max(...finiteWaveform, 0.01);
+          waveform = waveform.map(v => {
+            if (!Number.isFinite(v)) return 0.1;
+            return Math.max(0.1, v / maxVal);
+          });
 
         } catch (e) {
           console.error("Audio decode error, using fallback", e);
@@ -91,17 +121,18 @@ export class VoiceRecorderService {
           waveform = Array.from({ length: 50 }, () => Math.random() * 0.8 + 0.2);
         }
         
-        const storageKey = 'voice_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+        const storageKey = 'voice_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
         await this.storageService.saveVoice(storageKey, blob);
         const blobUrl = URL.createObjectURL(blob);
         
-        this.isRecording.set(false);
-        this.recordingDuration.set(0);
-        this.mediaRecorder?.stream.getTracks().forEach(track => track.stop());
-        this.mediaRecorder = null;
+        this.cleanupRecorderState();
         
         resolve({ blob, blobUrl, durationMs, waveform, storageKey });
       };
+
+      try {
+        this.mediaRecorder.requestData();
+      } catch { /* ignore - not supported by every runtime */ }
 
       this.mediaRecorder.stop();
     });
@@ -111,10 +142,24 @@ export class VoiceRecorderService {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
       clearInterval(this.timerInterval);
-      this.isRecording.set(false);
-      this.recordingDuration.set(0);
-      this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
-      this.mediaRecorder = null;
+      this.cleanupRecorderState();
     }
+  }
+
+  private cleanupRecorderState() {
+    this.isRecording.set(false);
+    this.recordingDuration.set(0);
+    this.mediaRecorder?.stream.getTracks().forEach(track => track.stop());
+    this.mediaRecorder = null;
+    this.audioChunks = [];
+    this.recordingMimeType = '';
+  }
+
+  private getSupportedMimeType(): string | undefined {
+    if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+      return undefined;
+    }
+
+    return VoiceRecorderService.preferredMimeTypes.find(type => MediaRecorder.isTypeSupported(type));
   }
 }

@@ -460,46 +460,48 @@ export class ChatService {
         replyToId: message.replyToId,
         attachments: message.attachments?.map(att => this.mapAttachmentForApi(att))
       }).subscribe({
-        next: (raw: any) => {
-          if (!raw) return;
-          const persisted = this.mapMessage(raw);
-
-          this.messages.update(msgs => {
-            let replaced = false;
-            let persistedWithLocalState: Message = persisted;
-
-            const nextMsgs = msgs.map(m => {
-              if (!this.sameId(m.id, message.id)) return m;
-              replaced = true;
-              persistedWithLocalState = {
-                ...persisted,
-                // Keep the local animation state to prevent temporary double-render.
-                isAnimating: m.isAnimating,
-                status: m.status === 'sending' ? 'sending' : persisted.status
-              };
-              return persistedWithLocalState;
-            });
-
-            if (!this.sameId(message.id, persisted.id)) {
-              this.tempToPersistedMessageIds.set(this.normalizeId(message.id), persisted.id);
-            }
-
-            if (replaced) {
-              return this.upsertMessages(nextMsgs, [persistedWithLocalState]);
-            }
-
-            return this.upsertMessages(nextMsgs, [persisted]);
-          });
-
-          this.chats.update(chats => chats.map(c =>
-            this.sameId(c.id, persisted.chatId)
-              ? { ...c, lastMessage: persisted, unreadCount: 0 }
-              : c
-          ));
-        },
+        next: (raw: any) => this.acknowledgeOutgoingMessage(message.id, raw),
         error: (err: any) => console.error('Failed to send message:', err)
       });
     }
+  }
+
+  acknowledgeOutgoingMessage(tempMessageId: string, raw: any) {
+    if (!raw) return;
+    const persisted = this.mapMessage(raw);
+
+    this.messages.update(msgs => {
+      let replaced = false;
+      let persistedWithLocalState: Message = persisted;
+
+      const nextMsgs = msgs.map(m => {
+        if (!this.sameId(m.id, tempMessageId)) return m;
+        replaced = true;
+        persistedWithLocalState = {
+          ...persisted,
+          // Keep local-only UI state to avoid visual flicker when optimistic message is replaced.
+          isAnimating: m.isAnimating,
+          status: m.status === 'sending' ? 'sending' : persisted.status
+        };
+        return persistedWithLocalState;
+      });
+
+      if (!this.sameId(tempMessageId, persisted.id)) {
+        this.tempToPersistedMessageIds.set(this.normalizeId(tempMessageId), persisted.id);
+      }
+
+      if (replaced) {
+        return this.upsertMessages(nextMsgs, [persistedWithLocalState]);
+      }
+
+      return this.upsertMessages(nextMsgs, [persisted]);
+    });
+
+    this.chats.update(chats => chats.map(c =>
+      this.sameId(c.id, persisted.chatId)
+        ? { ...c, lastMessage: persisted, unreadCount: 0 }
+        : c
+    ));
   }
 
   updateMessage(id: string, updates: Partial<Message>) {
