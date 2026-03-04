@@ -6,6 +6,23 @@ import type {
   EnvelopeResponse, InitiateUploadResponse, CompleteUploadResponse, PreKeyDto
 } from '../../models/e2ee.model';
 
+export interface ChatMemberApiDto {
+  id: string;
+  name: string;
+  username?: string;
+  bio?: string;
+  avatarUrl?: string;
+  isOnline: boolean;
+  lastSeen?: string;
+  role: string;
+  joinedAt: string;
+}
+
+export interface ChatMembersApiDto {
+  canManageMembers: boolean;
+  members: ChatMemberApiDto[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private http = inject(HttpClient);
@@ -55,6 +72,18 @@ export class ApiService {
 
   getSavedMessagesChat(): Observable<any> {
     return this.http.get(`${this.baseUrl}/chats/saved`);
+  }
+
+  getChatMembers(chatId: string): Observable<ChatMembersApiDto> {
+    return this.http.get<ChatMembersApiDto>(`${this.baseUrl}/chats/${chatId}/members`);
+  }
+
+  addChatMember(chatId: string, userId: string): Observable<ChatMemberApiDto> {
+    return this.http.post<ChatMemberApiDto>(`${this.baseUrl}/chats/${chatId}/members`, { userId });
+  }
+
+  removeChatMember(chatId: string, memberUserId: string): Observable<any> {
+    return this.http.delete(`${this.baseUrl}/chats/${chatId}/members/${memberUserId}`);
   }
 
   // ──── Messages ────

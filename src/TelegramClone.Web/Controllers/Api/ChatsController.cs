@@ -96,6 +96,56 @@ public class ChatsController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("{id}/members")]
+    public async Task<IActionResult> GetMembers(Guid id)
+    {
+        var userId = await GetCurrentDomainUserIdAsync();
+        if (userId == null) return Unauthorized();
+
+        var members = await _chatService.GetChatMembersAsync(id, userId.Value);
+        if (members == null) return NotFound();
+        return Ok(members);
+    }
+
+    [HttpPost("{id}/members")]
+    public async Task<IActionResult> AddMember(Guid id, [FromBody] AddChatMemberRequest request)
+    {
+        var userId = await GetCurrentDomainUserIdAsync();
+        if (userId == null) return Unauthorized();
+
+        var result = await _chatService.AddChatMemberAsync(id, userId.Value, request.UserId);
+        return result.Status switch
+        {
+            ChatMemberMutationStatus.Success => Ok(result.Member),
+            ChatMemberMutationStatus.ChatNotFound => NotFound(),
+            ChatMemberMutationStatus.UserNotFound => NotFound(),
+            ChatMemberMutationStatus.Forbidden => Forbid(),
+            ChatMemberMutationStatus.InvalidChatType => BadRequest("Members can only be managed in group chats."),
+            ChatMemberMutationStatus.AlreadyMember => Conflict("User is already a member of this group."),
+            _ => BadRequest()
+        };
+    }
+
+    [HttpDelete("{id}/members/{memberUserId}")]
+    public async Task<IActionResult> RemoveMember(Guid id, Guid memberUserId)
+    {
+        var userId = await GetCurrentDomainUserIdAsync();
+        if (userId == null) return Unauthorized();
+
+        var result = await _chatService.RemoveChatMemberAsync(id, userId.Value, memberUserId);
+        return result.Status switch
+        {
+            ChatMemberMutationStatus.Success => NoContent(),
+            ChatMemberMutationStatus.ChatNotFound => NotFound(),
+            ChatMemberMutationStatus.NotMember => NotFound(),
+            ChatMemberMutationStatus.Forbidden => Forbid(),
+            ChatMemberMutationStatus.InvalidChatType => BadRequest("Members can only be managed in group chats."),
+            ChatMemberMutationStatus.CannotRemoveOwner => BadRequest("Group owner cannot be removed."),
+            ChatMemberMutationStatus.CannotRemoveSelf => BadRequest("You cannot remove yourself from the group."),
+            _ => BadRequest()
+        };
+    }
+
     [HttpGet("search")]
     public async Task<IActionResult> SearchChats([FromQuery] string q)
     {
@@ -108,3 +158,4 @@ public class ChatsController : ControllerBase
 }
 
 public record PinChatRequest(bool IsPinned);
+public record AddChatMemberRequest(Guid UserId);

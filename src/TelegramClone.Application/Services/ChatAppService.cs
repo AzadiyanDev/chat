@@ -121,6 +121,104 @@ public class ChatAppService : IChatAppService
         return true;
     }
 
+    public async Task<ChatMembersDto?> GetChatMembersAsync(Guid chatId, Guid userId)
+    {
+        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
+        if (chat == null) return null;
+
+        var actorParticipant = chat.Participants.FirstOrDefault(p => p.UserId == userId);
+        if (actorParticipant == null) return null;
+
+        if (chat.Type != ChatType.Group)
+        {
+            return null;
+        }
+
+        return new ChatMembersDto
+        {
+            CanManageMembers = CanManageMembers(actorParticipant),
+            Members = chat.Participants
+                .Select(MapMember)
+                .OrderBy(m => GetRoleSortOrder(m.Role))
+                .ThenBy(m => m.Name)
+                .ToList()
+        };
+    }
+
+    public async Task<ChatMemberMutationResultDto> AddChatMemberAsync(Guid chatId, Guid actorUserId, Guid targetUserId)
+    {
+        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
+        if (chat == null)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.ChatNotFound };
+
+        var actorParticipant = chat.Participants.FirstOrDefault(p => p.UserId == actorUserId);
+        if (actorParticipant == null)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.Forbidden };
+
+        if (chat.Type != ChatType.Group)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.InvalidChatType };
+
+        if (!CanManageMembers(actorParticipant))
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.Forbidden };
+
+        if (chat.Participants.Any(p => p.UserId == targetUserId))
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.AlreadyMember };
+
+        var targetUser = await _unitOfWork.Users.GetByIdAsync(targetUserId);
+        if (targetUser == null)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.UserNotFound };
+
+        var participant = new ChatParticipant
+        {
+            ChatId = chatId,
+            UserId = targetUserId,
+            User = targetUser,
+            Role = "member",
+            LastReadAt = DateTime.UtcNow
+        };
+
+        chat.Participants.Add(participant);
+        await _unitOfWork.SaveChangesAsync();
+
+        return new ChatMemberMutationResultDto
+        {
+            Status = ChatMemberMutationStatus.Success,
+            Member = MapMember(participant)
+        };
+    }
+
+    public async Task<ChatMemberMutationResultDto> RemoveChatMemberAsync(Guid chatId, Guid actorUserId, Guid targetUserId)
+    {
+        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
+        if (chat == null)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.ChatNotFound };
+
+        var actorParticipant = chat.Participants.FirstOrDefault(p => p.UserId == actorUserId);
+        if (actorParticipant == null)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.Forbidden };
+
+        if (chat.Type != ChatType.Group)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.InvalidChatType };
+
+        if (!CanManageMembers(actorParticipant))
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.Forbidden };
+
+        var targetParticipant = chat.Participants.FirstOrDefault(p => p.UserId == targetUserId);
+        if (targetParticipant == null)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.NotMember };
+
+        if (targetParticipant.UserId == actorUserId)
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.CannotRemoveSelf };
+
+        if (string.Equals(targetParticipant.Role, "owner", StringComparison.OrdinalIgnoreCase))
+            return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.CannotRemoveOwner };
+
+        chat.Participants.Remove(targetParticipant);
+        await _unitOfWork.SaveChangesAsync();
+
+        return new ChatMemberMutationResultDto { Status = ChatMemberMutationStatus.Success };
+    }
+
     public async Task<IEnumerable<ChatListItemDto>> SearchChatsAsync(Guid userId, string query)
     {
         var chats = (await _unitOfWork.Chats.SearchChatsAsync(userId, query)).ToList();
@@ -189,5 +287,35 @@ public class ChatAppService : IChatAppService
         if (participant == null) return 0;
 
         return await _unitOfWork.Messages.GetUnreadCountAsync(chat.Id, userId, participant.LastReadAt);
+    }
+
+    private static bool CanManageMembers(ChatParticipant participant)
+    {
+        return string.Equals(participant.Role, "owner", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(participant.Role, "admin", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int GetRoleSortOrder(string role)
+    {
+        if (string.Equals(role, "owner", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase)) return 1;
+        return 2;
+    }
+
+    private static ChatMemberDto MapMember(ChatParticipant participant)
+    {
+        var user = participant.User;
+        return new ChatMemberDto
+        {
+            Id = participant.UserId,
+            Name = user?.Name ?? string.Empty,
+            Username = user?.Username,
+            Bio = user?.Bio,
+            AvatarUrl = user?.AvatarUrl,
+            IsOnline = user?.IsOnline ?? false,
+            LastSeen = user?.LastSeen,
+            Role = participant.Role,
+            JoinedAt = participant.JoinedAt
+        };
     }
 }

@@ -357,6 +357,40 @@ export class ChatService {
     return this.chats().find(c => this.sameId(c.id, chatId));
   }
 
+  async refreshChat(chatId: string): Promise<void> {
+    try {
+      const raw = await this.api.getChat(chatId).toPromise();
+      if (!raw) return;
+
+      const refreshed = this.mapChat(raw);
+      for (const participant of refreshed.participants) {
+        this.usersCache.set(participant.id, participant);
+      }
+
+      this.chats.update(chats => {
+        const idx = chats.findIndex(c => this.sameId(c.id, refreshed.id));
+        if (idx === -1) {
+          const merged = this.dedupeChatsById([refreshed, ...chats]);
+          return this.sortChats(merged);
+        }
+
+        const existing = chats[idx];
+        const nextChat: Chat = {
+          ...existing,
+          ...refreshed,
+          lastMessage: refreshed.lastMessage ?? existing.lastMessage,
+          unreadCount: Number.isFinite(refreshed.unreadCount) ? refreshed.unreadCount : existing.unreadCount
+        };
+
+        const updated = [...chats];
+        updated[idx] = nextChat;
+        return this.sortChats(updated);
+      });
+    } catch (err) {
+      console.error('Failed to refresh chat:', err);
+    }
+  }
+
   getMessagesForChat(chatId: string) {
     // Trigger lazy load if not yet loaded
     this.ensureMessagesLoaded(chatId);

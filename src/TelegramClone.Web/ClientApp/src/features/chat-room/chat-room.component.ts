@@ -2,7 +2,7 @@ import { Component, inject, computed, effect, ElementRef, viewChild, afterNextRe
 import { Router, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ChatService } from '../../core/services/chat.service';
-import { ApiService } from '../../core/services/api.service';
+import { ApiService, type ChatMemberApiDto } from '../../core/services/api.service';
 import { VoiceRecorderService } from '../../core/services/voice-recorder.service';
 import { AnimationService } from '../../core/services/animation.service';
 import { AudioService } from '../../core/services/audio.service';
@@ -476,6 +476,126 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                 <span class="text-xs text-telegram-muted">Bio</span>
                 <p class="text-sm leading-relaxed whitespace-pre-wrap break-words">{{ info.bio }}</p>
               </div>
+
+              @if (chat()?.type === 'group') {
+                <div class="profile-field flex flex-col gap-2 bg-white/90 dark:bg-telegram-surface rounded-2xl border border-gray-200 dark:border-gray-700/50 shadow-md px-3 py-2" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs text-telegram-muted">Members</span>
+                    <span class="text-xs font-medium text-telegram-primary">{{ groupMembers().length }}</span>
+                  </div>
+
+                  @if (isGroupMembersLoading()) {
+                    <div class="flex items-center justify-center py-3 text-telegram-muted">
+                      <span class="w-4 h-4 border-2 border-telegram-primary border-t-transparent rounded-full animate-spin mr-2"></span>
+                      <span class="text-xs">Loading members...</span>
+                    </div>
+                  } @else if (groupMembersError()) {
+                    <div class="text-xs text-red-500 py-1">{{ groupMembersError() }}</div>
+                  } @else {
+                    <div class="flex flex-col gap-1.5 max-h-52 overflow-y-auto custom-scrollbar pr-1">
+                      @for (member of groupMembers(); track member.id) {
+                        <div class="flex items-center gap-2 rounded-xl px-1.5 py-1.5 border border-transparent hover:bg-gray-100/70 dark:hover:bg-gray-700/30 transition-colors">
+                          <app-avatar
+                            [src]="member.avatarUrl"
+                            [name]="member.name"
+                            [isOnline]="member.isOnline"
+                            size="xs"
+                          ></app-avatar>
+
+                          <div class="min-w-0 flex-1">
+                            <div class="text-sm font-medium truncate">{{ member.name }}</div>
+                            <div class="text-[11px] text-telegram-muted truncate">{{ memberStatus(member) }}</div>
+                          </div>
+
+                          <span
+                            class="text-[10px] px-1.5 py-0.5 rounded-full border uppercase tracking-wide shrink-0"
+                            [class]="memberRoleBadgeClass(member.role)"
+                          >
+                            {{ memberRoleLabel(member.role) }}
+                          </span>
+
+                          @if (canRemoveGroupMember(member)) {
+                            <button
+                              class="w-7 h-7 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                              [disabled]="!!memberMutationInProgressUserId()"
+                              (click)="removeGroupMember(member, $event)"
+                            >
+                              @if (memberMutationInProgressUserId() === member.id) {
+                                <span class="inline-block w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></span>
+                              } @else {
+                                <i class="ph ph-user-minus text-base"></i>
+                              }
+                            </button>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+
+                @if (canManageGroupMembers()) {
+                  <div class="profile-field flex flex-col gap-2 bg-white/90 dark:bg-telegram-surface rounded-2xl border border-gray-200 dark:border-gray-700/50 shadow-md px-3 py-2" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+                    <button
+                      class="w-full flex items-center justify-between rounded-xl px-2 py-2 text-sm font-medium text-telegram-primary bg-telegram-primary/5 hover:bg-telegram-primary/10 transition-colors"
+                      (click)="toggleAddMemberPanel()"
+                    >
+                      <span class="flex items-center gap-1.5">
+                        <i class="ph ph-user-plus text-base"></i>
+                        Add member
+                      </span>
+                      <i [class]="'ph ' + (showAddMemberPanel() ? 'ph-caret-up' : 'ph-caret-down')"></i>
+                    </button>
+
+                    @if (showAddMemberPanel()) {
+                      <div class="flex flex-col gap-2">
+                        <div class="relative flex items-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-telegram-surface px-2">
+                          <i class="ph ph-magnifying-glass text-gray-400 text-base mr-1"></i>
+                          <input
+                            type="text"
+                            placeholder="Search users..."
+                            class="w-full bg-transparent outline-none text-sm py-2"
+                            style="border: none; box-shadow: none; color: var(--tg-text);"
+                            [value]="memberSearchQuery()"
+                            (input)="onMemberSearchInput($event)"
+                          >
+                          @if (isMemberSearchLoading()) {
+                            <span class="w-3.5 h-3.5 border-2 border-telegram-primary border-t-transparent rounded-full animate-spin"></span>
+                          }
+                        </div>
+
+                        @if (memberMutationError()) {
+                          <div class="text-xs text-red-500">{{ memberMutationError() }}</div>
+                        }
+
+                        @if (memberSearchQuery().trim().length >= 2 && memberSearchResults().length > 0) {
+                          <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden max-h-40 overflow-y-auto custom-scrollbar">
+                            @for (user of memberSearchResults(); track user.id) {
+                              <button
+                                class="w-full flex items-center gap-2 px-2 py-2 text-left hover:bg-gray-100/80 dark:hover:bg-gray-700/40 transition-colors border-b border-gray-100 dark:border-gray-700/40 last:border-b-0 disabled:opacity-60"
+                                [disabled]="!!memberMutationInProgressUserId()"
+                                (click)="addGroupMember(user)"
+                              >
+                                <app-avatar [src]="user.avatarUrl" [name]="user.name" [isOnline]="user.isOnline" size="xs"></app-avatar>
+                                <div class="flex-1 min-w-0">
+                                  <div class="text-sm font-medium truncate">{{ user.name }}</div>
+                                  <div class="text-[11px] text-telegram-muted truncate">{{ user.username ? ('@' + user.username) : 'No username' }}</div>
+                                </div>
+                                @if (memberMutationInProgressUserId() === user.id) {
+                                  <span class="w-3.5 h-3.5 border-2 border-telegram-primary border-t-transparent rounded-full animate-spin"></span>
+                                } @else {
+                                  <i class="ph ph-plus-circle text-telegram-primary text-lg"></i>
+                                }
+                              </button>
+                            }
+                          </div>
+                        } @else if (memberSearchQuery().trim().length >= 2 && !isMemberSearchLoading()) {
+                          <div class="text-xs text-telegram-muted px-1 py-1">No users available to add</div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              }
             </div>
           </div>
         </div>
@@ -716,6 +836,17 @@ export class ChatRoomComponent implements OnDestroy {
   // Header peer profile preview
   showPeerProfileCard = signal(false);
   private isClosingPeerProfileCard = false;
+  groupMembers = signal<GroupProfileMember[]>([]);
+  isGroupMembersLoading = signal(false);
+  groupMembersError = signal<string | null>(null);
+  canManageGroupMembers = signal(false);
+  showAddMemberPanel = signal(false);
+  memberSearchQuery = signal('');
+  memberSearchResults = signal<User[]>([]);
+  isMemberSearchLoading = signal(false);
+  memberMutationInProgressUserId = signal<string | null>(null);
+  memberMutationError = signal<string | null>(null);
+  private memberSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   
   Math = Math;
 
@@ -867,6 +998,7 @@ export class ChatRoomComponent implements OnDestroy {
   ngOnDestroy() {
     this.detachViewportListeners();
     this.clearPendingComposerTimers();
+    this.clearMemberSearchDebounce();
     this.routeSub?.unsubscribe();
     if (this.scrollRafId) cancelAnimationFrame(this.scrollRafId);
     const el = this.messagesContainer()?.nativeElement;
@@ -1415,15 +1547,225 @@ export class ChatRoomComponent implements OnDestroy {
     this.hasText.set(hasContent);
   }
 
+  toggleAddMemberPanel() {
+    if (!this.canManageGroupMembers()) return;
+    this.memberMutationError.set(null);
+    this.showAddMemberPanel.update(value => !value);
+    if (!this.showAddMemberPanel()) {
+      this.memberSearchQuery.set('');
+      this.memberSearchResults.set([]);
+      this.isMemberSearchLoading.set(false);
+      this.clearMemberSearchDebounce();
+    }
+  }
+
+  onMemberSearchInput(event: Event) {
+    const query = (event.target as HTMLInputElement).value;
+    this.memberSearchQuery.set(query);
+    this.memberMutationError.set(null);
+    this.clearMemberSearchDebounce();
+
+    if (query.trim().length < 2) {
+      this.memberSearchResults.set([]);
+      this.isMemberSearchLoading.set(false);
+      return;
+    }
+
+    this.isMemberSearchLoading.set(true);
+    this.memberSearchDebounceTimer = setTimeout(() => {
+      this.api.searchUsers(query.trim()).subscribe({
+        next: (users) => {
+          const existingIds = new Set(this.groupMembers().map(m => this.normalizeId(m.id)));
+          const available = (users || []).filter(user => !existingIds.has(this.normalizeId(user.id)));
+          this.memberSearchResults.set(available);
+          this.isMemberSearchLoading.set(false);
+        },
+        error: (err) => {
+          console.error('Failed to search users for group member add:', err);
+          this.memberSearchResults.set([]);
+          this.isMemberSearchLoading.set(false);
+        }
+      });
+    }, 300);
+  }
+
+  async addGroupMember(user: User) {
+    const c = this.chat();
+    if (!c || c.type !== 'group') return;
+    if (!this.canManageGroupMembers()) return;
+    if (this.memberMutationInProgressUserId()) return;
+
+    this.memberMutationError.set(null);
+    this.memberMutationInProgressUserId.set(user.id);
+
+    try {
+      await firstValueFrom(this.api.addChatMember(c.id, user.id));
+      await this.loadGroupMembers();
+      await this.chatService.refreshChat(c.id);
+      this.memberSearchQuery.set('');
+      this.memberSearchResults.set([]);
+    } catch (err) {
+      console.error('Failed to add group member:', err);
+      this.memberMutationError.set('Could not add member. Please try again.');
+    } finally {
+      this.memberMutationInProgressUserId.set(null);
+      this.isMemberSearchLoading.set(false);
+      this.clearMemberSearchDebounce();
+    }
+  }
+
+  async removeGroupMember(member: GroupProfileMember, event?: Event) {
+    event?.stopPropagation();
+
+    const c = this.chat();
+    if (!c || c.type !== 'group') return;
+    if (!this.canRemoveGroupMember(member)) return;
+    if (this.memberMutationInProgressUserId()) return;
+
+    this.memberMutationError.set(null);
+    this.memberMutationInProgressUserId.set(member.id);
+
+    try {
+      await firstValueFrom(this.api.removeChatMember(c.id, member.id));
+      await this.loadGroupMembers();
+      await this.chatService.refreshChat(c.id);
+    } catch (err) {
+      console.error('Failed to remove group member:', err);
+      this.memberMutationError.set('Could not remove member. Please try again.');
+    } finally {
+      this.memberMutationInProgressUserId.set(null);
+    }
+  }
+
+  canRemoveGroupMember(member: GroupProfileMember): boolean {
+    if (!this.canManageGroupMembers()) return false;
+    if (this.sameId(member.id, this.chatService.currentUser().id)) return false;
+    return member.role !== 'owner';
+  }
+
+  memberStatus(member: GroupProfileMember): string {
+    return this.getDirectUserStatusText(member);
+  }
+
+  memberRoleLabel(role: string): string {
+    const normalized = this.normalizeMemberRole(role);
+    if (normalized === 'owner') return 'Owner';
+    if (normalized === 'admin') return 'Admin';
+    return 'Member';
+  }
+
+  memberRoleBadgeClass(role: string): string {
+    const normalized = this.normalizeMemberRole(role);
+    if (normalized === 'owner') {
+      return 'bg-amber-100/80 text-amber-700 border-amber-300 dark:bg-amber-400/15 dark:text-amber-200 dark:border-amber-400/30';
+    }
+
+    if (normalized === 'admin') {
+      return 'bg-sky-100/80 text-sky-700 border-sky-300 dark:bg-sky-400/15 dark:text-sky-200 dark:border-sky-400/30';
+    }
+
+    return 'bg-gray-100/80 text-gray-600 border-gray-300 dark:bg-gray-700/30 dark:text-gray-300 dark:border-gray-600/60';
+  }
+
+  private async loadGroupMembers() {
+    const c = this.chat();
+    if (!c || c.type !== 'group') {
+      this.groupMembers.set([]);
+      this.canManageGroupMembers.set(false);
+      this.groupMembersError.set(null);
+      this.isGroupMembersLoading.set(false);
+      return;
+    }
+
+    this.isGroupMembersLoading.set(true);
+    this.groupMembersError.set(null);
+
+    try {
+      const response = await firstValueFrom(this.api.getChatMembers(c.id));
+      const members = (response?.members || []).map(m => this.mapGroupMember(m));
+      this.groupMembers.set(members);
+      this.canManageGroupMembers.set(!!response?.canManageMembers);
+    } catch (err) {
+      console.error('Failed to load group members:', err);
+      this.groupMembers.set([]);
+      this.canManageGroupMembers.set(false);
+      this.groupMembersError.set('Could not load members.');
+    } finally {
+      this.isGroupMembersLoading.set(false);
+    }
+  }
+
+  private mapGroupMember(member: ChatMemberApiDto): GroupProfileMember {
+    return {
+      id: String(member.id),
+      name: member.name || 'User',
+      username: member.username,
+      bio: member.bio,
+      avatarUrl: member.avatarUrl,
+      isOnline: !!member.isOnline,
+      lastSeen: this.parseDateToMs(member.lastSeen),
+      role: this.normalizeMemberRole(member.role),
+      joinedAt: this.parseDateToMs(member.joinedAt)
+    };
+  }
+
+  private parseDateToMs(raw?: string): number | undefined {
+    if (!raw) return undefined;
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private normalizeMemberRole(role: string | undefined): GroupProfileMember['role'] {
+    const normalized = String(role ?? '').trim().toLowerCase();
+    if (normalized === 'owner' || normalized === 'admin') return normalized;
+    return 'member';
+  }
+
+  private clearMemberSearchDebounce() {
+    if (!this.memberSearchDebounceTimer) return;
+    clearTimeout(this.memberSearchDebounceTimer);
+    this.memberSearchDebounceTimer = null;
+  }
+
+  private resetGroupMemberPanelState() {
+    this.showAddMemberPanel.set(false);
+    this.memberSearchQuery.set('');
+    this.memberSearchResults.set([]);
+    this.isMemberSearchLoading.set(false);
+    this.memberMutationInProgressUserId.set(null);
+    this.memberMutationError.set(null);
+    this.clearMemberSearchDebounce();
+  }
+
+  private normalizeId(value: unknown): string {
+    return String(value ?? '').trim().toLowerCase();
+  }
+
+  private sameId(a: unknown, b: unknown): boolean {
+    return this.normalizeId(a) === this.normalizeId(b);
+  }
+
   // ========== Peer Profile Preview ==========
 
   openPeerProfile(event: MouseEvent) {
     if (this.showPeerProfileCard()) return;
     if (!this.peerProfile()) return;
 
+    const currentChat = this.chat();
+
     this.showEmojiPicker.set(false);
     this.showAttachmentPanel.set(false);
     this.contextMenuMsg.set(null);
+    this.resetGroupMemberPanelState();
+
+    if (currentChat?.type === 'group') {
+      void this.loadGroupMembers();
+    } else {
+      this.groupMembers.set([]);
+      this.canManageGroupMembers.set(false);
+      this.groupMembersError.set(null);
+    }
+
     this.showPeerProfileCard.set(true);
     this.isClosingPeerProfileCard = false;
     setTimeout(() => this.animatePeerProfileIn(event.currentTarget as HTMLElement), 0);
@@ -1439,6 +1781,7 @@ export class ChatRoomComponent implements OnDestroy {
     if (typeof gsap === 'undefined' || !backdrop || !card) {
       this.showPeerProfileCard.set(false);
       this.isClosingPeerProfileCard = false;
+      this.resetGroupMemberPanelState();
       return;
     }
 
@@ -1448,6 +1791,7 @@ export class ChatRoomComponent implements OnDestroy {
       onComplete: () => {
         this.showPeerProfileCard.set(false);
         this.isClosingPeerProfileCard = false;
+        this.resetGroupMemberPanelState();
       }
     });
 
@@ -1985,4 +2329,9 @@ interface PeerProfileInfo {
   bio: string;
   avatarUrl?: string;
   status: string;
+}
+
+interface GroupProfileMember extends User {
+  role: 'owner' | 'admin' | 'member';
+  joinedAt?: number;
 }
