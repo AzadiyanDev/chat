@@ -479,3 +479,4 @@ D:\Projects\chat\tests\TelegramClone.IntegrationTests\obj\Debug\net10.0\Telegram
 D:\Projects\chat\tests\TelegramClone.IntegrationTests\obj\Debug\net10.0\ref\TelegramClone.IntegrationTests.dll
 D:\Projects\chat\tests\TelegramClone.IntegrationTests\bin\Debug\net10.0\ClientApp\dist\ngsw.json
 D:\Projects\chat\tests\TelegramClone.IntegrationTests\bin\Debug\net10.0\ClientApp\dist\prerendered-routes.json
+D:\Projects\chat\tests\TelegramClone.IntegrationTests\bin\Debug\net10.0\dotnet-tools.json

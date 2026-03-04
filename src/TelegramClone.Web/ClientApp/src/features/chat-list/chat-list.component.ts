@@ -2,6 +2,7 @@ import { Component, inject, signal, afterNextRender, ElementRef, viewChild, comp
 import { Router } from '@angular/router';
 import { ChatService } from '../../core/services/chat.service';
 import { ApiService } from '../../core/services/api.service';
+import { AuthService } from '../../core/services/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { AnimationService } from '../../core/services/animation.service';
 import { PwaService } from '../../core/services/pwa.service';
@@ -264,6 +265,21 @@ declare var gsap: any;
                   </button>
                 </div>
               }
+
+              <div class="profile-field bg-white/90 dark:bg-telegram-surface rounded-2xl border border-red-200/80 dark:border-red-800/60 shadow-md p-2" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+                <button
+                  type="button"
+                  class="w-full py-2 rounded-xl bg-red-500 text-white text-sm shadow-md hover:bg-red-600 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+                  [disabled]="isLoggingOut()"
+                  (click)="logoutFromProfile()"
+                >
+                  @if (isLoggingOut()) {
+                    در حال خروج...
+                  } @else {
+                    خروج
+                  }
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -422,6 +438,7 @@ declare var gsap: any;
 export class ChatListComponent {
   chatService = inject(ChatService);
   private api = inject(ApiService);
+  private auth = inject(AuthService);
   themeService = inject(ThemeService);
   animation = inject(AnimationService);
   pwa = inject(PwaService);
@@ -435,6 +452,7 @@ export class ChatListComponent {
   showFabMenu = signal(false);
   showProfileCard = signal(false);
   showNewChatModal = signal(false);
+  isLoggingOut = signal(false);
   searchQuery = signal('');
   profileDraft = signal<ProfileDraft>({ name: '', username: '', bio: '', avatarUrl: '' });
   skeletonItems = [1, 2, 3, 4, 5, 6];
@@ -619,6 +637,17 @@ export class ChatListComponent {
       avatarUrl: draft.avatarUrl?.trim() || this.chatService.currentUser().avatarUrl
     });
     this.closeProfileCard();
+  }
+
+  async logoutFromProfile() {
+    if (this.isLoggingOut()) return;
+    this.isLoggingOut.set(true);
+    this.showProfileCard.set(false);
+    try {
+      await this.auth.logout();
+    } finally {
+      this.isLoggingOut.set(false);
+    }
   }
 
   openChat(chatId: string, event: MouseEvent) {

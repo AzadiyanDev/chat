@@ -1,9 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using TelegramClone.Application.DTOs;
 using TelegramClone.Application.Interfaces;
-using TelegramClone.Infrastructure.Identity;
-using Microsoft.AspNetCore.Identity;
 using System.Security.Claims;
 
 namespace TelegramClone.Web.Controllers.Api;
@@ -14,12 +13,10 @@ namespace TelegramClone.Web.Controllers.Api;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
-    private readonly UserManager<ApplicationUser> _userManager;
 
-    public AuthController(IAuthService authService, UserManager<ApplicationUser> userManager)
+    public AuthController(IAuthService authService)
     {
         _authService = authService;
-        _userManager = userManager;
     }
 
     [HttpPost("register")]
@@ -41,6 +38,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("logout")]
+    [Authorize]
     public async Task<IActionResult> Logout()
     {
         await _authService.LogoutAsync();
@@ -48,6 +46,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("me")]
+    [Authorize]
     public async Task<IActionResult> GetCurrentUser()
     {
         var identityUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);

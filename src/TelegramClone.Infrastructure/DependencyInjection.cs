@@ -14,6 +14,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, string connectionString, string uploadPath)
     {
+        services.AddHttpContextAccessor();
+
         // EF Core + SQL Server
         services.AddDbContext<TelegramDbContext>(options =>
             options.UseSqlServer(connectionString));

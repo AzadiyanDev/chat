@@ -1,5 +1,8 @@
 using AutoMapper;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using System.Security.Claims;
 using TelegramClone.Application.DTOs;
 using TelegramClone.Application.Interfaces;
 using TelegramClone.Domain.Entities;
@@ -14,17 +17,20 @@ public class AuthService : IAuthService
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IUnitOfWork unitOfWork,
-        IMapper mapper)
+        IMapper mapper,
+        IHttpContextAccessor httpContextAccessor)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<AuthResultDto> RegisterAsync(RegisterDto dto)
@@ -114,12 +120,51 @@ public class AuthService : IAuthService
 
     public async Task LogoutAsync()
     {
-        await _signInManager.SignOutAsync();
+        var httpContext = _httpContextAccessor.HttpContext;
+        var identityUserId = httpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!string.IsNullOrWhiteSpace(identityUserId))
+        {
+            var domainUser = await _unitOfWork.Users.GetByIdentityIdAsync(identityUserId);
+            if (domainUser != null)
+            {
+                await _unitOfWork.Users.UpdateOnlineStatusAsync(domainUser.Id, false);
+                await _unitOfWork.SaveChangesAsync();
+            }
+        }
+
+        try
+        {
+            await _signInManager.SignOutAsync();
+        }
+        catch
+        {
+            // Ignore and continue with explicit cookie cleanup below.
+        }
+
+        if (httpContext == null) return;
+
+        await TrySignOutSchemeAsync(httpContext, IdentityConstants.ApplicationScheme);
+        await TrySignOutSchemeAsync(httpContext, IdentityConstants.ExternalScheme);
+        await TrySignOutSchemeAsync(httpContext, IdentityConstants.TwoFactorRememberMeScheme);
+        await TrySignOutSchemeAsync(httpContext, IdentityConstants.TwoFactorUserIdScheme);
     }
 
     public async Task<UserDto?> GetCurrentUserAsync(string identityUserId)
     {
         var user = await _unitOfWork.Users.GetByIdentityIdAsync(identityUserId);
         return user != null ? _mapper.Map<UserDto>(user) : null;
+    }
+
+    private static async Task TrySignOutSchemeAsync(HttpContext context, string scheme)
+    {
+        try
+        {
+            await context.SignOutAsync(scheme);
+        }
+        catch
+        {
+            // Some schemes may not be registered in specific hosting/test environments.
+        }
     }
 }
