@@ -391,6 +391,45 @@ export class ChatService {
     }
   }
 
+  async refreshMessagesForChat(chatId: string, limit = 80): Promise<void> {
+    try {
+      const raw = await this.api.getMessages(chatId, limit).toPromise();
+      if (!raw) return;
+
+      const incoming = raw.map((m: any) => this.mapMessage(m));
+      this.loadedChatMessages.add(chatId);
+
+      this.messages.update(msgs => {
+        const sameChat = msgs.filter(m => this.sameId(m.chatId, chatId));
+        const otherChats = msgs.filter(m => !this.sameId(m.chatId, chatId));
+        return [...otherChats, ...this.upsertMessages(sameChat, incoming)];
+      });
+
+      this.restoreVoiceUrls(chatId);
+
+      const latest = incoming.length > 0 ? incoming[incoming.length - 1] : undefined;
+      if (!latest) return;
+
+      this.chats.update(chats => {
+        const updated = chats.map(chat => {
+          if (!this.sameId(chat.id, chatId)) return chat;
+
+          const currentTs = chat.lastMessage?.timestamp ?? 0;
+          const hasDifferentCurrent = !!chat.lastMessage && !this.sameId(chat.lastMessage.id, latest.id);
+          if (hasDifferentCurrent && currentTs > latest.timestamp) {
+            return chat;
+          }
+
+          return { ...chat, lastMessage: latest };
+        });
+
+        return this.sortChats(updated);
+      });
+    } catch (err) {
+      console.error('Failed to refresh chat messages:', err);
+    }
+  }
+
   getMessagesForChat(chatId: string) {
     // Trigger lazy load if not yet loaded
     this.ensureMessagesLoaded(chatId);

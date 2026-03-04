@@ -7,7 +7,6 @@ import { ApiService, type ChatMemberApiDto } from '../../core/services/api.servi
 import { VoiceRecorderService } from '../../core/services/voice-recorder.service';
 import { AnimationService } from '../../core/services/animation.service';
 import { AudioService } from '../../core/services/audio.service';
-import { ThemeService } from '../../core/services/theme.service';
 import { AvatarComponent } from '../../shared/components/avatar.component';
 import { VoicePlayerComponent } from '../../shared/components/voice-player.component';
 import { EmojiPickerComponent } from '../../shared/components/emoji-picker.component';
@@ -85,8 +84,8 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
         </div>
         
         <div class="flex items-center gap-1 text-telegram-primary z-10">
-          <button (click)="themeService.toggleTheme($event)" class="p-2 rounded-full hover:bg-white/10 active:scale-90 transition-all">
-            <i [class]="'ph ' + themeService.getThemeInfo(themeService.currentTheme()).icon + ' text-xl'"></i>
+          <button (click)="manualRefreshMessages()" [disabled]="isManualRefreshing() || isAnyUploadInProgress()" class="p-2 rounded-full hover:bg-white/10 active:scale-90 transition-all disabled:opacity-50" title="Refresh messages">
+            <i class="ph ph-arrow-clockwise text-xl" [class.animate-spin]="isManualRefreshing()"></i>
           </button>
         </div>
       </header>
@@ -823,7 +822,6 @@ export class ChatRoomComponent implements OnDestroy {
   voiceRecorder = inject(VoiceRecorderService);
   animationService = inject(AnimationService);
   audioService = inject(AudioService);
-  themeService = inject(ThemeService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   
@@ -849,6 +847,7 @@ export class ChatRoomComponent implements OnDestroy {
   pendingAttachments = signal<Attachment[]>([]);
   isDraggingFiles = signal(false);
   isUploadingAttachments = signal(false);
+  isManualRefreshing = signal(false);
   attachmentUploadProgress = signal<Record<string, number>>({});
   voiceUploadProgress = signal<number | null>(null);
   isVoiceUploading = computed(() => this.voiceUploadProgress() !== null);
@@ -1259,6 +1258,25 @@ export class ChatRoomComponent implements OnDestroy {
   handleEnter(event: Event) {
     event.preventDefault();
     this.initiateSendMessage();
+  }
+
+  async manualRefreshMessages() {
+    if (!this.chatId || this.isManualRefreshing()) return;
+
+    this.isManualRefreshing.set(true);
+    try {
+      await Promise.all([
+        this.chatService.refreshMessagesForChat(this.chatId),
+        this.chatService.refreshChat(this.chatId)
+      ]);
+
+      // Keep unread badge in sync when user manually refreshes while chat is open.
+      this.chatService.markAsRead(this.chatId);
+    } catch (err) {
+      console.error('Manual chat refresh failed:', err);
+    } finally {
+      this.isManualRefreshing.set(false);
+    }
   }
 
   goBack() {
