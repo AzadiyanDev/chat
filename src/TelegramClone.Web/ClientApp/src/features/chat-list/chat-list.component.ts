@@ -1,4 +1,4 @@
-import { Component, inject, signal, afterNextRender, ElementRef, viewChild, computed } from '@angular/core';
+import { Component, inject, signal, afterNextRender, ElementRef, viewChild, computed, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { ChatService } from '../../core/services/chat.service';
 import { ApiService } from '../../core/services/api.service';
@@ -6,6 +6,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { AnimationService } from '../../core/services/animation.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { APP_BUILD_VERSION, APP_RELEASE, RELEASE_MANIFEST_URL, RELEASE_NOTES_STORAGE_KEY, type AppReleaseManifest } from '../../core/config/app-release';
 import { AvatarComponent } from '../../shared/components/avatar.component';
 import { SkeletonLoaderComponent } from '../../shared/components/skeleton-loader.component';
 import { CreateGroupModalComponent } from '../../shared/components/create-group-modal.component';
@@ -411,15 +412,89 @@ declare var gsap: any;
         </div>
       }
 
-      <!-- Update Available Banner -->
-      @if (pwa.updateAvailable()) {
-        <div class="fixed top-20 left-4 right-4 z-30 flex items-center gap-3 px-4 py-3 bg-green-50 dark:bg-green-900/30 rounded-2xl border border-green-200 dark:border-green-700/50 shadow-xl" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
-          <i class="ph-fill ph-arrow-circle-up text-green-500 text-2xl shrink-0"></i>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-semibold text-green-800 dark:text-green-200">Update Available</div>
-            <div class="text-xs text-green-600 dark:text-green-400">A new version is ready. Reload to update.</div>
+      <!-- App Version -->
+      <button
+        type="button"
+        class="fixed bottom-6 left-4 z-20 px-2.5 py-1 rounded-lg bg-white/90 dark:bg-telegram-surface border border-gray-200 dark:border-gray-700/50 text-[11px] text-telegram-muted shadow-sm active:scale-95 transition-transform"
+        (click)="openReleaseModal()"
+      >
+        v{{ runningAppVersion() }}
+      </button>
+
+      <!-- Release / Update Modal -->
+      @if (showReleaseModal()) {
+        <div
+          class="fixed inset-0 z-[120] flex items-center justify-center p-4"
+          style="background: rgba(10, 14, 20, 0.46); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);"
+          (click)="closeReleaseModal()"
+        >
+          <div
+            class="w-full max-w-[430px] bg-white dark:bg-telegram-surface rounded-3xl border border-gray-200 dark:border-gray-700/50 shadow-2xl p-4"
+            style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);"
+            (click)="$event.stopPropagation()"
+          >
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <div class="min-w-0">
+                <div class="text-base font-semibold">
+                  @if (isUpdateActionAvailable()) {
+                    Update ready
+                  } @else {
+                    What's new
+                  }
+                </div>
+                <div class="text-xs text-telegram-muted">
+                  Latest: v{{ latestReleaseVersion() }} | {{ latestReleasePublishedAt() }}
+                </div>
+              </div>
+              <button class="w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors active:scale-90" (click)="closeReleaseModal()">
+                <i class="ph ph-x text-lg"></i>
+              </button>
+            </div>
+
+            <div class="max-h-64 overflow-y-auto custom-scrollbar pr-1">
+              <div class="text-xs font-semibold text-telegram-primary mb-1 uppercase tracking-wide">Release Notes</div>
+              <ul class="text-sm text-black dark:text-white/90 leading-relaxed space-y-1.5">
+                @for (item of latestReleaseNotes(); track item) {
+                  <li class="flex items-start gap-2">
+                    <span class="mt-1 w-1.5 h-1.5 rounded-full bg-telegram-primary shrink-0"></span>
+                    <span>{{ item }}</span>
+                  </li>
+                }
+              </ul>
+            </div>
+
+            <div class="mt-3 flex items-center justify-between gap-2">
+              <div class="text-[11px] text-telegram-muted">
+                Current: v{{ runningAppVersion() }}
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  class="px-3 py-1.5 rounded-xl text-xs font-semibold border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700/40 transition-colors"
+                  (click)="closeReleaseModal()"
+                >
+                  @if (isUpdateActionAvailable()) {
+                    Later
+                  } @else {
+                    Got it
+                  }
+                </button>
+
+                @if (isUpdateActionAvailable()) {
+                  <button
+                    class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-telegram-primary text-white active:scale-95 transition-transform disabled:opacity-70 disabled:cursor-not-allowed"
+                    [disabled]="isApplyingUpdate()"
+                    (click)="applyLatestUpdate()"
+                  >
+                    @if (isApplyingUpdate()) {
+                      Updating...
+                    } @else {
+                      Update now
+                    }
+                  </button>
+                }
+              </div>
+            </div>
           </div>
-          <button (click)="pwa.activateUpdate()" class="px-3 py-1.5 rounded-xl bg-green-500 text-white text-xs font-semibold shrink-0 active:scale-95 transition-transform">Reload</button>
         </div>
       }
 
@@ -469,6 +544,21 @@ export class ChatListComponent {
   // Create group modal state
   showCreateGroupModal = signal(false);
 
+  // Release/update modal state
+  showReleaseModal = signal(false);
+  isApplyingUpdate = signal(false);
+  private releaseModalDismissedInSession = false;
+  private latestRelease = signal<AppReleaseManifest>(APP_RELEASE);
+  private releaseModalMode = signal<'notes' | 'update'>('notes');
+
+  runningAppVersion = signal(APP_BUILD_VERSION);
+  latestReleaseVersion = computed(() => this.latestRelease().version);
+  latestReleasePublishedAt = computed(() => this.latestRelease().publishedAt);
+  latestReleaseNotes = computed(() => this.latestRelease().notes);
+  isUpdateActionAvailable = computed(() => {
+    return this.releaseModalMode() === 'update' || this.pwa.updateAvailable();
+  });
+
   nonArchivedChats = this.chatService.getNonArchivedChats();
   
   pinnedChats = computed(() => this.nonArchivedChats().filter(c => c.isPinned));
@@ -506,6 +596,16 @@ export class ChatListComponent {
   constructor() {
     this.themeService.init();
     this.profileDraft.set(this.createDraftFromCurrentUser());
+    void this.initializeReleaseModal();
+
+    effect(() => {
+      const updateReady = this.pwa.updateAvailable();
+      if (!updateReady) return;
+      if (this.releaseModalDismissedInSession) return;
+
+      this.releaseModalMode.set('update');
+      this.showReleaseModal.set(true);
+    });
     
     afterNextRender(() => {
       setTimeout(() => {
@@ -527,6 +627,37 @@ export class ChatListComponent {
 
   onSearchInput(event: Event) {
     this.searchQuery.set((event.target as HTMLInputElement).value);
+  }
+
+  openReleaseModal() {
+    this.releaseModalDismissedInSession = false;
+    if (this.hasUpdateAvailable()) {
+      this.releaseModalMode.set('update');
+    } else {
+      this.releaseModalMode.set('notes');
+    }
+    this.showReleaseModal.set(true);
+  }
+
+  closeReleaseModal() {
+    if (this.isUpdateActionAvailable()) {
+      this.releaseModalDismissedInSession = true;
+    } else {
+      this.markReleaseNotesSeen(this.runningAppVersion());
+    }
+
+    this.showReleaseModal.set(false);
+  }
+
+  async applyLatestUpdate() {
+    if (this.isApplyingUpdate()) return;
+    this.isApplyingUpdate.set(true);
+
+    try {
+      await this.pwa.activateUpdate(this.latestReleaseVersion());
+    } finally {
+      this.isApplyingUpdate.set(false);
+    }
   }
 
   openProfileCard(event: MouseEvent) {
@@ -817,6 +948,79 @@ export class ChatListComponent {
         );
       }
     }
+  }
+
+  private async initializeReleaseModal() {
+    await this.pwa.checkForUpdate();
+
+    const latest = await this.fetchLatestReleaseManifest();
+    this.latestRelease.set(latest);
+
+    const runningVersion = this.runningAppVersion();
+    const seenVersion = this.readReleaseNotesSeen();
+
+    if (this.hasUpdateAvailable()) {
+      this.releaseModalMode.set('update');
+      this.showReleaseModal.set(true);
+      return;
+    }
+
+    if (this.normalizeVersion(seenVersion) !== this.normalizeVersion(runningVersion)) {
+      this.releaseModalMode.set('notes');
+      this.showReleaseModal.set(true);
+    }
+  }
+
+  private async fetchLatestReleaseManifest(): Promise<AppReleaseManifest> {
+    const cacheBust = Date.now();
+    const url = `${RELEASE_MANIFEST_URL}?ts=${cacheBust}`;
+
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) return APP_RELEASE;
+
+      const raw = await response.json();
+      return this.normalizeReleaseManifest(raw);
+    } catch {
+      return APP_RELEASE;
+    }
+  }
+
+  private normalizeReleaseManifest(raw: any): AppReleaseManifest {
+    const version = String(raw?.version ?? '').trim();
+    const publishedAt = String(raw?.publishedAt ?? '').trim();
+    const notes = Array.isArray(raw?.notes)
+      ? raw.notes.map((item: any) => String(item ?? '').trim()).filter((item: string) => item.length > 0)
+      : [];
+
+    return {
+      version: version || APP_RELEASE.version,
+      publishedAt: publishedAt || APP_RELEASE.publishedAt,
+      notes: notes.length > 0 ? notes : APP_RELEASE.notes
+    };
+  }
+
+  private markReleaseNotesSeen(version: string) {
+    try {
+      localStorage.setItem(RELEASE_NOTES_STORAGE_KEY, this.normalizeVersion(version));
+    } catch { }
+  }
+
+  private readReleaseNotesSeen(): string {
+    try {
+      return localStorage.getItem(RELEASE_NOTES_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  private normalizeVersion(version: string): string {
+    return String(version ?? '').trim().toLowerCase();
+  }
+
+  private hasUpdateAvailable(): boolean {
+    return this.normalizeVersion(this.latestReleaseVersion()) !== this.normalizeVersion(this.runningAppVersion())
+      || this.pwa.updateAvailable();
   }
 
   private createDraftFromCurrentUser(): ProfileDraft {

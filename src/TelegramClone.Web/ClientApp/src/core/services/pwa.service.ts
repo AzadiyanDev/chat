@@ -43,6 +43,18 @@ export class PwaService {
   }
 
   /**
+   * Ask the service worker to check server for a newer app version.
+   */
+  async checkForUpdate(): Promise<boolean> {
+    if (!this.swUpdate.isEnabled) return false;
+    try {
+      return await this.swUpdate.checkForUpdate();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Trigger the native install prompt (A2HS).
    * Returns true if the user accepted.
    */
@@ -58,9 +70,25 @@ export class PwaService {
   /**
    * Reload the page to activate the waiting service worker.
    */
-  activateUpdate(): void {
+  async activateUpdate(versionTag?: string): Promise<void> {
     if (this.swUpdate.isEnabled) {
-      this.swUpdate.activateUpdate().then(() => document.location.reload());
+      try {
+        await this.swUpdate.checkForUpdate();
+      } catch { }
+
+      try {
+        await this.swUpdate.activateUpdate();
+      } catch { }
     }
+
+    this.forceReload(versionTag);
+  }
+
+  private forceReload(versionTag?: string): void {
+    const now = Date.now().toString();
+    const next = new URL(window.location.href);
+    next.searchParams.set('v', String(versionTag ?? now));
+    next.searchParams.set('ts', now);
+    window.location.replace(next.toString());
   }
 }
