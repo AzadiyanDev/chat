@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpEvent } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
 import type {
   KeyBundleUpload, KeyBundleResponse, SubmitEnvelope,
@@ -149,6 +149,15 @@ export class ApiService {
     return this.http.post<{ url: string }>(`${this.baseUrl}/files/voice`, formData);
   }
 
+  uploadVoiceWithProgress(file: Blob, fileName: string): Observable<HttpEvent<{ url: string }>> {
+    const formData = new FormData();
+    formData.append('file', file, fileName);
+    return this.http.post<{ url: string }>(`${this.baseUrl}/files/voice`, formData, {
+      reportProgress: true,
+      observe: 'events'
+    });
+  }
+
   uploadAvatar(file: File): Observable<{ url: string }> {
     const formData = new FormData();
     formData.append('file', file);
@@ -159,6 +168,15 @@ export class ApiService {
     const formData = new FormData();
     formData.append('file', file);
     return this.http.post<{ url: string }>(`${this.baseUrl}/files/attachment`, formData);
+  }
+
+  uploadAttachmentWithProgress(file: File): Observable<HttpEvent<{ url: string }>> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<{ url: string }>(`${this.baseUrl}/files/attachment`, formData, {
+      reportProgress: true,
+      observe: 'events'
+    });
   }
 
   // ──── E2EE: Devices ────

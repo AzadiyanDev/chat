@@ -1,6 +1,7 @@
 import { Component, inject, computed, effect, ElementRef, viewChild, afterNextRender, signal, OnDestroy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { HttpEventType } from '@angular/common/http';
 import { ChatService } from '../../core/services/chat.service';
 import { ApiService, type ChatMemberApiDto } from '../../core/services/api.service';
 import { VoiceRecorderService } from '../../core/services/voice-recorder.service';
@@ -683,12 +684,12 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-telegram-muted">
               @if (isUploadingAttachments()) {
-                Uploading...
+                Uploading {{ attachmentUploadPercent() }}%
               } @else {
                 {{ pendingAttachments().length }} file(s) ready
               }
             </span>
-            <button class="text-xs text-red-500 disabled:opacity-50" (click)="clearPendingAttachments()" [disabled]="isUploadingAttachments()">
+            <button class="text-xs text-red-500 disabled:opacity-50" (click)="clearPendingAttachments()" [disabled]="isAnyUploadInProgress()">
               Clear
             </button>
           </div>
@@ -702,15 +703,42 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                     <i [class]="attachmentIcon(att) + ' text-xl'"></i>
                   </div>
                 }
+
+                @if (isUploadingAttachments()) {
+                  @let progress = getAttachmentUploadProgress(att.id);
+                  <div class="absolute inset-0 bg-black/45 flex items-center justify-center">
+                    <span class="text-[10px] text-white font-semibold">{{ progress }}%</span>
+                  </div>
+                  <div class="absolute left-0 right-0 bottom-0 h-1 bg-black/20">
+                    <div class="h-full bg-telegram-primary transition-all duration-200" [style.width.%]="progress"></div>
+                  </div>
+                }
+
                 <button
                   class="absolute top-0 right-0 w-5 h-5 rounded-full bg-black/40 text-white text-xs flex items-center justify-center"
                   (click)="removePendingAttachment(att.id, $event)"
-                  [disabled]="isUploadingAttachments()"
+                  [disabled]="isAnyUploadInProgress()"
                 >
                   <i class="ph ph-x"></i>
                 </button>
               </div>
             }
+          </div>
+        </div>
+      }
+
+      @if (isVoiceUploading()) {
+        <div
+          class="absolute z-30 bg-white dark:bg-telegram-surface rounded-2xl shadow-md px-3 py-2 w-[230px] max-w-[calc(100%-1.5rem)]"
+          style="left: 0.75rem;"
+          [style.bottom]="replyingTo() ? '6.3rem' : '4.55rem'"
+        >
+          <div class="flex items-center justify-between text-xs mb-1">
+            <span class="text-telegram-muted">Uploading voice</span>
+            <span class="font-medium text-telegram-primary">{{ voiceUploadProgress() ?? 0 }}%</span>
+          </div>
+          <div class="h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div class="h-full bg-telegram-primary transition-all duration-200" [style.width.%]="voiceUploadProgress() ?? 0"></div>
           </div>
         </div>
       }
@@ -756,7 +784,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
           </div>
 
           <!-- Attachment -->
-          <button (click)="toggleAttachmentPanel()" class="p-1.5 text-gray-400 hover:text-telegram-primary transition-all mb-0.5 shrink-0 active:scale-90">
+          <button (click)="toggleAttachmentPanel()" [disabled]="isAnyUploadInProgress()" class="p-1.5 text-gray-400 hover:text-telegram-primary transition-all mb-0.5 shrink-0 active:scale-90 disabled:opacity-50">
             <i class="ph ph-paperclip text-xl transform -rotate-45"></i>
           </button>
 
@@ -775,11 +803,11 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                 </button>
               </div>
             } @else {
-              <button #sendBtn (click)="initiateSendMessage()" [disabled]="isUploadingAttachments()" class="absolute inset-0 w-9 h-9 rounded-full bg-telegram-primary text-white flex items-center justify-center opacity-0 scale-50 pointer-events-none origin-center shadow-md disabled:opacity-70">
+              <button #sendBtn (click)="initiateSendMessage()" [disabled]="isAnyUploadInProgress()" class="absolute inset-0 w-9 h-9 rounded-full bg-telegram-primary text-white flex items-center justify-center opacity-0 scale-50 pointer-events-none origin-center shadow-md disabled:opacity-70">
                 <i class="ph-fill ph-paper-plane-right text-lg"></i>
               </button>
               
-              <button #micBtn (click)="startRecording()" class="absolute inset-0 w-9 h-9 rounded-full text-telegram-primary hover:bg-white/10 flex items-center justify-center origin-center active:scale-90 transition-all">
+              <button #micBtn (click)="startRecording()" [disabled]="isAnyUploadInProgress()" class="absolute inset-0 w-9 h-9 rounded-full text-telegram-primary hover:bg-white/10 flex items-center justify-center origin-center active:scale-90 transition-all disabled:opacity-50">
                 <i class="ph-fill ph-microphone text-2xl"></i>
               </button>
             }
@@ -821,6 +849,23 @@ export class ChatRoomComponent implements OnDestroy {
   pendingAttachments = signal<Attachment[]>([]);
   isDraggingFiles = signal(false);
   isUploadingAttachments = signal(false);
+  attachmentUploadProgress = signal<Record<string, number>>({});
+  voiceUploadProgress = signal<number | null>(null);
+  isVoiceUploading = computed(() => this.voiceUploadProgress() !== null);
+  isAnyUploadInProgress = computed(() => this.isUploadingAttachments() || this.isVoiceUploading());
+  attachmentUploadPercent = computed(() => {
+    const pending = this.pendingAttachments();
+    if (pending.length === 0) return 0;
+
+    const progress = this.attachmentUploadProgress();
+    const values = pending
+      .map(att => progress[att.id])
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+    if (values.length === 0) return 0;
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return Math.round(total / values.length);
+  });
   private transientAttachmentUrls = new Set<string>();
   private pendingAttachmentFiles = new Map<string, File>();
 
@@ -999,6 +1044,8 @@ export class ChatRoomComponent implements OnDestroy {
     this.detachViewportListeners();
     this.clearPendingComposerTimers();
     this.clearMemberSearchDebounce();
+    this.voiceUploadProgress.set(null);
+    this.clearAttachmentUploadProgress();
     this.routeSub?.unsubscribe();
     if (this.scrollRafId) cancelAnimationFrame(this.scrollRafId);
     const el = this.messagesContainer()?.nativeElement;
@@ -1252,6 +1299,7 @@ export class ChatRoomComponent implements OnDestroy {
   }
 
   toggleAttachmentPanel() {
+    if (this.isAnyUploadInProgress()) return;
     this.showAttachmentPanel.update(v => !v);
     if (this.showAttachmentPanel()) {
       this.showEmojiPicker.set(false);
@@ -1279,6 +1327,7 @@ export class ChatRoomComponent implements OnDestroy {
   }
 
   openGalleryPicker() {
+    if (this.isAnyUploadInProgress()) return;
     this.showAttachmentPanel.set(false);
     const input = this.galleryInput()?.nativeElement as HTMLInputElement | undefined;
     if (!input) return;
@@ -1287,6 +1336,7 @@ export class ChatRoomComponent implements OnDestroy {
   }
 
   openFilePicker() {
+    if (this.isAnyUploadInProgress()) return;
     this.showAttachmentPanel.set(false);
     const input = this.fileInput()?.nativeElement as HTMLInputElement | undefined;
     if (!input) return;
@@ -1310,7 +1360,7 @@ export class ChatRoomComponent implements OnDestroy {
 
   removePendingAttachment(attachmentId: string, event?: Event) {
     event?.stopPropagation();
-    if (this.isUploadingAttachments()) return;
+    if (this.isAnyUploadInProgress()) return;
     let removedUrl: string | undefined;
     this.pendingAttachments.update(items => {
       const next: Attachment[] = [];
@@ -1326,14 +1376,16 @@ export class ChatRoomComponent implements OnDestroy {
 
     if (removedUrl) this.revokeTransientUrl(removedUrl);
     this.pendingAttachmentFiles.delete(attachmentId);
+    this.removeAttachmentUploadProgress(attachmentId);
     this.updateHasContentState();
   }
 
   clearPendingAttachments() {
-    if (this.isUploadingAttachments()) return;
+    if (this.isAnyUploadInProgress()) return;
     const urls = this.pendingAttachments().map(a => a.url);
     this.pendingAttachments.set([]);
     this.pendingAttachmentFiles.clear();
+    this.clearAttachmentUploadProgress();
     for (const url of urls) {
       this.revokeTransientUrl(url);
     }
@@ -1417,6 +1469,7 @@ export class ChatRoomComponent implements OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.isDraggingFiles.set(false);
+    if (this.isAnyUploadInProgress()) return;
 
     const files = Array.from(event.dataTransfer?.files ?? []);
     this.addFilesToPending(files);
@@ -1450,6 +1503,7 @@ export class ChatRoomComponent implements OnDestroy {
   }
 
   private addFilesToPending(files: File[]) {
+    if (this.isAnyUploadInProgress()) return;
     if (!files || files.length === 0) return;
     const mapped = files
       .filter(f => f.size > 0)
@@ -1485,16 +1539,83 @@ export class ChatRoomComponent implements OnDestroy {
   }
 
   private async uploadPendingAttachments(attachments: Attachment[]): Promise<Attachment[]> {
+    this.resetAttachmentUploadProgress(attachments);
+
     return await Promise.all(attachments.map(async att => {
       const file = this.pendingAttachmentFiles.get(att.id);
       if (!file) return { ...att };
-
-      const uploaded = await firstValueFrom(this.api.uploadAttachment(file));
-      return {
-        ...att,
-        url: uploaded.url
-      };
+      return await this.uploadSingleAttachmentWithProgress(att, file);
     }));
+  }
+
+  private uploadSingleAttachmentWithProgress(attachment: Attachment, file: File): Promise<Attachment> {
+    return new Promise((resolve, reject) => {
+      this.api.uploadAttachmentWithProgress(file).subscribe({
+        next: (event) => {
+          if (event.type === HttpEventType.UploadProgress) {
+            const percent = this.calculateUploadPercent(event.loaded, event.total, file.size);
+            this.setAttachmentUploadProgress(attachment.id, percent);
+            return;
+          }
+
+          if (event.type === HttpEventType.Response) {
+            const url = event.body?.url;
+            if (!url) {
+              reject(new Error('Attachment upload did not return URL.'));
+              return;
+            }
+
+            this.setAttachmentUploadProgress(attachment.id, 100);
+            resolve({
+              ...attachment,
+              url,
+              progress: 100
+            });
+          }
+        },
+        error: (err) => reject(err)
+      });
+    });
+  }
+
+  getAttachmentUploadProgress(attachmentId: string): number {
+    const value = this.attachmentUploadProgress()[attachmentId];
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  private setAttachmentUploadProgress(attachmentId: string, percent: number) {
+    const bounded = Math.max(0, Math.min(100, Math.round(percent)));
+    this.attachmentUploadProgress.update(state => ({ ...state, [attachmentId]: bounded }));
+  }
+
+  private resetAttachmentUploadProgress(attachments: Attachment[]) {
+    const next: Record<string, number> = {};
+    for (const att of attachments) {
+      next[att.id] = 0;
+    }
+    this.attachmentUploadProgress.set(next);
+  }
+
+  private removeAttachmentUploadProgress(attachmentId: string) {
+    this.attachmentUploadProgress.update(state => {
+      if (!(attachmentId in state)) return state;
+      const { [attachmentId]: _, ...rest } = state;
+      return rest;
+    });
+  }
+
+  private clearAttachmentUploadProgress() {
+    this.attachmentUploadProgress.set({});
+  }
+
+  private calculateUploadPercent(loaded: number, total?: number, fallbackTotal?: number): number {
+    const effectiveTotal = total && total > 0 ? total : (fallbackTotal && fallbackTotal > 0 ? fallbackTotal : 0);
+    if (effectiveTotal <= 0) {
+      return loaded > 0 ? 1 : 0;
+    }
+
+    return (loaded / effectiveTotal) * 100;
   }
 
   private sendQuickMessage(text: string, attachments?: Attachment[]) {
@@ -2106,7 +2227,7 @@ export class ChatRoomComponent implements OnDestroy {
     const rawText = this.inputText().trim();
     const attachments = this.pendingAttachments().map(a => ({ ...a }));
     if (rawText.length === 0 && attachments.length === 0) return;
-    if (this.isUploadingAttachments()) return;
+    if (this.isAnyUploadInProgress()) return;
 
     const sourceTextEl = this.messageInput()?.nativeElement;
     if (!sourceTextEl) return;
@@ -2118,10 +2239,10 @@ export class ChatRoomComponent implements OnDestroy {
         uploadedAttachments = await this.uploadPendingAttachments(attachments);
       } catch (err) {
         console.error('Failed to upload attachment(s):', err);
-        this.isUploadingAttachments.set(false);
         return;
+      } finally {
+        this.isUploadingAttachments.set(false);
       }
-      this.isUploadingAttachments.set(false);
     }
 
     const finalText = this.buildAttachmentSummaryText(rawText, uploadedAttachments);
@@ -2129,6 +2250,7 @@ export class ChatRoomComponent implements OnDestroy {
     this.inputText.set('');
     this.pendingAttachments.set([]);
     this.pendingAttachmentFiles.clear();
+    this.clearAttachmentUploadProgress();
     for (const url of transientUrls) {
       this.revokeTransientUrl(url);
     }
@@ -2181,10 +2303,13 @@ export class ChatRoomComponent implements OnDestroy {
   // ========== Voice Recording ==========
 
   async startRecording() {
+    if (this.isAnyUploadInProgress()) return;
     await this.voiceRecorder.startRecording();
   }
 
   async stopAndSendRecording() {
+    if (this.isAnyUploadInProgress()) return;
+
     const result = await this.voiceRecorder.stopRecording();
     if (result && result.durationMs > 0) {
       const tempId = 'm_' + Math.random().toString(36).substring(2, 9);
@@ -2217,11 +2342,7 @@ export class ChatRoomComponent implements OnDestroy {
       try {
         const ext = this.resolveVoiceExtension(result.blob.type);
         const fileName = `voice_${Date.now()}.${ext}`;
-        const uploadResult = await firstValueFrom(this.api.uploadVoice(result.blob, fileName));
-        const uploadedUrl = uploadResult?.url;
-        if (!uploadedUrl) {
-          throw new Error('Voice upload did not return URL.');
-        }
+        const uploadedUrl = await this.uploadVoiceWithProgress(result.blob, fileName);
 
         this.chatService.updateMessage(tempId, {
           voice: { ...localVoice, url: uploadedUrl },
@@ -2243,6 +2364,8 @@ export class ChatRoomComponent implements OnDestroy {
       } catch (err) {
         console.error('Failed to upload or send voice message:', err);
         this.chatService.updateMessage(tempId, { status: 'sending' });
+      } finally {
+        this.voiceUploadProgress.set(null);
       }
     }
   }
@@ -2266,6 +2389,34 @@ export class ChatRoomComponent implements OnDestroy {
     if (normalized.includes('aac')) return 'aac';
     if (normalized.includes('opus')) return 'opus';
     return 'webm';
+  }
+
+  private uploadVoiceWithProgress(blob: Blob, fileName: string): Promise<string> {
+    this.voiceUploadProgress.set(0);
+
+    return new Promise((resolve, reject) => {
+      this.api.uploadVoiceWithProgress(blob, fileName).subscribe({
+        next: (event) => {
+          if (event.type === HttpEventType.UploadProgress) {
+            const percent = this.calculateUploadPercent(event.loaded, event.total, blob.size);
+            this.voiceUploadProgress.set(Math.max(0, Math.min(100, Math.round(percent))));
+            return;
+          }
+
+          if (event.type === HttpEventType.Response) {
+            const url = event.body?.url;
+            if (!url) {
+              reject(new Error('Voice upload did not return URL.'));
+              return;
+            }
+
+            this.voiceUploadProgress.set(100);
+            resolve(url);
+          }
+        },
+        error: (err) => reject(err)
+      });
+    });
   }
 
   private nextFrame(): Promise<void> {
