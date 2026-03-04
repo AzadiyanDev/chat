@@ -94,6 +94,7 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
       <div 
         #messagesContainer 
         class="flex-1 overflow-y-auto px-4 pt-4 flex flex-col gap-1 relative telegram-pattern custom-scrollbar"
+        style="overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y;"
         [style.paddingBottom]="replyingTo() ? '9.25rem' : '6rem'"
       >
         @for (item of displayItems(); track item.key) {
@@ -623,6 +624,8 @@ const CONTEXT_REACTION_EMOJIS = ['❤️', '👍', '😂', '😮', '😢', '🙏
                 [ngModel]="inputText()"
                 (ngModelChange)="onInputTextChange($event)"
                 (input)="autoGrow($event)"
+                (focus)="onComposerFocus()"
+                (blur)="onComposerBlur()"
                 (keydown.enter)="handleEnter($event)"
                 placeholder="Message" 
                 class="w-full bg-transparent text-black dark:text-white py-2 outline-none resize-none no-scrollbar max-h-[120px] placeholder-gray-400 dark:placeholder-gray-500 text-[15px] leading-snug"
@@ -727,6 +730,9 @@ export class ChatRoomComponent implements OnDestroy {
   private scrollRafId: number | null = null;
   private routeSub: any;
   private lastViewportHeight = 0;
+  private maxLayoutViewportHeight = 0;
+  private keyboardIsOpen = false;
+  private pendingComposerSyncTimers: number[] = [];
   private onViewportChange = () => this.syncViewportMetrics();
 
   chat = computed(() => this.chatService.getChatById(this.chatId));
@@ -860,6 +866,7 @@ export class ChatRoomComponent implements OnDestroy {
 
   ngOnDestroy() {
     this.detachViewportListeners();
+    this.clearPendingComposerTimers();
     this.routeSub?.unsubscribe();
     if (this.scrollRafId) cancelAnimationFrame(this.scrollRafId);
     const el = this.messagesContainer()?.nativeElement;
@@ -892,23 +899,82 @@ export class ChatRoomComponent implements OnDestroy {
     }
   }
 
+  private isNearBottom(threshold = 140): boolean {
+    const el = this.messagesContainer()?.nativeElement;
+    if (!el) return true;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    return distance <= threshold;
+  }
+
+  private isComposerFocused(): boolean {
+    const inputEl = this.messageInput()?.nativeElement as HTMLTextAreaElement | undefined;
+    return !!inputEl && document.activeElement === inputEl;
+  }
+
+  private resetWindowScrollPosition() {
+    if (typeof window === 'undefined') return;
+    if (window.scrollY !== 0 || window.scrollX !== 0) {
+      window.scrollTo(0, 0);
+    }
+    if (document.documentElement.scrollTop !== 0) {
+      document.documentElement.scrollTop = 0;
+    }
+    if (document.body.scrollTop !== 0) {
+      document.body.scrollTop = 0;
+    }
+  }
+
+  private queueViewportResync(delayMs: number, keepBottom: boolean) {
+    if (typeof window === 'undefined') return;
+    const id = window.setTimeout(() => {
+      this.syncViewportMetrics();
+      if (keepBottom && this.isComposerFocused()) {
+        this.scrollToBottom(true);
+      }
+    }, delayMs);
+    this.pendingComposerSyncTimers.push(id);
+  }
+
+  private clearPendingComposerTimers() {
+    if (typeof window === 'undefined') return;
+    for (const timerId of this.pendingComposerSyncTimers) {
+      window.clearTimeout(timerId);
+    }
+    this.pendingComposerSyncTimers = [];
+  }
+
   private syncViewportMetrics() {
     if (typeof window === 'undefined') return;
 
     const vv = window.visualViewport;
-    const nextHeight = Math.round(vv?.height ?? window.innerHeight ?? document.documentElement.clientHeight ?? 0);
-    if (nextHeight <= 0) return;
-
-    const inputEl = this.messageInput()?.nativeElement as HTMLTextAreaElement | undefined;
-    const openedKeyboard = this.lastViewportHeight > 0 && (this.lastViewportHeight - nextHeight) > 80;
-
-    this.viewportHeight.set(nextHeight);
-
-    if (openedKeyboard && inputEl && document.activeElement === inputEl) {
-      setTimeout(() => this.scrollToBottom(), 40);
+    const layoutHeight = Math.round(window.innerHeight ?? document.documentElement.clientHeight ?? 0);
+    if (layoutHeight > 0) {
+      this.maxLayoutViewportHeight = Math.max(this.maxLayoutViewportHeight, layoutHeight);
     }
 
+    const baseHeight = this.maxLayoutViewportHeight || layoutHeight;
+    const viewportHeight = Math.round(vv?.height ?? layoutHeight ?? 0);
+    const viewportOffsetTop = Math.max(0, Math.round(vv?.offsetTop ?? 0));
+    const effectiveHeight = Math.max(0, viewportHeight + viewportOffsetTop);
+    const nextHeight = Math.round(effectiveHeight || layoutHeight || baseHeight);
+    if (nextHeight <= 0) return;
+
+    const keyboardInset = Math.max(0, baseHeight - nextHeight);
+    const keyboardNowOpen = keyboardInset > 80;
+    const openedKeyboard = !this.keyboardIsOpen && keyboardNowOpen;
+    const viewportShrunk = this.lastViewportHeight > 0 && (this.lastViewportHeight - nextHeight) > 40;
+    const wasNearBottom = this.isNearBottom();
+    const inputFocused = this.isComposerFocused();
+
+    this.viewportHeight.set(nextHeight);
     this.lastViewportHeight = nextHeight;
+    this.keyboardIsOpen = keyboardNowOpen;
+
+    this.resetWindowScrollPosition();
+
+    if (inputFocused && wasNearBottom && (openedKeyboard || keyboardNowOpen || viewportShrunk)) {
+      requestAnimationFrame(() => this.scrollToBottom(true));
+    }
   }
 
   private attachViewportListeners() {
@@ -928,6 +994,21 @@ export class ChatRoomComponent implements OnDestroy {
     window.removeEventListener('orientationchange', this.onViewportChange);
     window.visualViewport?.removeEventListener('resize', this.onViewportChange);
     window.visualViewport?.removeEventListener('scroll', this.onViewportChange);
+  }
+
+  onComposerFocus() {
+    this.resetWindowScrollPosition();
+    this.clearPendingComposerTimers();
+    this.syncViewportMetrics();
+    this.queueViewportResync(40, true);
+    this.queueViewportResync(140, true);
+    this.queueViewportResync(260, true);
+  }
+
+  onComposerBlur() {
+    this.resetWindowScrollPosition();
+    this.clearPendingComposerTimers();
+    this.queueViewportResync(80, false);
   }
 
   getDateLabel(ts: number): string {
