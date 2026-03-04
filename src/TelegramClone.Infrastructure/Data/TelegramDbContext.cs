@@ -57,6 +57,7 @@ public class TelegramDbContext : IdentityDbContext<ApplicationUser>
         {
             entity.HasKey(e => new { e.ChatId, e.UserId });
             entity.Property(e => e.Role).HasMaxLength(20).HasDefaultValue("member");
+            entity.Property(e => e.LastReadAt).HasDefaultValueSql("SYSUTCDATETIME()");
 
             // Reverse lookup: "which chats does this user belong to?" — the composite PK
             // has ChatId first, so UserId-first queries need their own index.

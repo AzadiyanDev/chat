@@ -9,5 +9,6 @@ public class ChatParticipant
     public User User { get; set; } = null!;
 
     public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
+    public DateTime LastReadAt { get; set; } = DateTime.UtcNow;
     public string Role { get; set; } = "member"; // owner, admin, member
 }

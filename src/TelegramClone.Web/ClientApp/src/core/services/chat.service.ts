@@ -527,6 +527,9 @@ export class ChatService {
 
   markAsRead(chatId: string) {
     this.chats.update(chats => chats.map(c => this.sameId(c.id, chatId) ? { ...c, unreadCount: 0 } : c));
+    this.api.markChatAsRead(chatId).subscribe({
+      error: (err: any) => console.error('Failed to mark chat as read:', err)
+    });
   }
 
   updateCurrentUserProfile(updates: Partial<Pick<User, 'name' | 'username' | 'bio' | 'avatarUrl'>>) {

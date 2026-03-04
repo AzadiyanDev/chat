@@ -85,6 +85,17 @@ public class ChatsController : ControllerBase
         return Ok();
     }
 
+    [HttpPost("{id}/read")]
+    public async Task<IActionResult> MarkAsRead(Guid id)
+    {
+        var userId = await GetCurrentDomainUserIdAsync();
+        if (userId == null) return Unauthorized();
+
+        var result = await _chatService.MarkChatAsReadAsync(id, userId.Value);
+        if (!result) return NotFound();
+        return NoContent();
+    }
+
     [HttpGet("search")]
     public async Task<IActionResult> SearchChats([FromQuery] string q)
     {

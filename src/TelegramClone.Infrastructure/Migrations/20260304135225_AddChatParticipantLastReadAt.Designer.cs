@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TelegramClone.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using TelegramClone.Infrastructure.Data;
 namespace TelegramClone.Infrastructure.Migrations
 {
     [DbContext(typeof(TelegramDbContext))]
-    partial class TelegramDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260304135225_AddChatParticipantLastReadAt")]
+    partial class AddChatParticipantLastReadAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

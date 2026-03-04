@@ -45,6 +45,10 @@ export class ApiService {
     return this.http.put(`${this.baseUrl}/chats/${chatId}/pin`, { isPinned });
   }
 
+  markChatAsRead(chatId: string): Observable<any> {
+    return this.http.post(`${this.baseUrl}/chats/${chatId}/read`, {});
+  }
+
   searchChats(query: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/chats/search?q=${encodeURIComponent(query)}`);
   }

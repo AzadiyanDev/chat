@@ -852,6 +852,7 @@ export class ChatRoomComponent implements OnDestroy {
       const msgs = this.messages();
       if (msgs.length > this.messageCount) {
         this.messageCount = msgs.length;
+        this.chatService.markAsRead(this.chatId);
         setTimeout(() => this.scrollToBottom(), 50);
       }
     });

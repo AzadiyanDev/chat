@@ -20,8 +20,19 @@ public class ChatAppService : IChatAppService
 
     public async Task<IEnumerable<ChatListItemDto>> GetUserChatsAsync(Guid userId)
     {
-        var chats = await _unitOfWork.Chats.GetUserChatsAsync(userId);
-        return _mapper.Map<IEnumerable<ChatListItemDto>>(chats);
+        var chats = (await _unitOfWork.Chats.GetUserChatsAsync(userId)).ToList();
+        var unreadByChat = await BuildUnreadMapAsync(chats, userId);
+
+        var mapped = _mapper.Map<List<ChatListItemDto>>(chats);
+        for (var i = 0; i < chats.Count; i++)
+        {
+            if (unreadByChat.TryGetValue(chats[i].Id, out var unread))
+            {
+                mapped[i].UnreadCount = unread;
+            }
+        }
+
+        return mapped;
     }
 
     public async Task<ChatDto?> GetChatByIdAsync(Guid chatId, Guid userId)
@@ -34,6 +45,7 @@ public class ChatAppService : IChatAppService
             return null;
 
         var dto = _mapper.Map<ChatDto>(chat);
+        dto.UnreadCount = await GetUnreadCountForChatAsync(chat, userId);
         return dto;
     }
 
@@ -47,7 +59,10 @@ public class ChatAppService : IChatAppService
             if (existing != null)
             {
                 var existingWithParticipants = await _unitOfWork.Chats.GetChatWithParticipantsAsync(existing.Id);
-                return _mapper.Map<ChatDto>(existingWithParticipants ?? existing);
+                var existingChat = existingWithParticipants ?? existing;
+                var existingDto = _mapper.Map<ChatDto>(existingChat);
+                existingDto.UnreadCount = await GetUnreadCountForChatAsync(existingChat, creatorId);
+                return existingDto;
             }
         }
 
@@ -93,17 +108,45 @@ public class ChatAppService : IChatAppService
         return true;
     }
 
+    public async Task<bool> MarkChatAsReadAsync(Guid chatId, Guid userId)
+    {
+        var chat = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chatId);
+        if (chat == null) return false;
+
+        var participant = chat.Participants.FirstOrDefault(p => p.UserId == userId);
+        if (participant == null) return false;
+
+        participant.LastReadAt = DateTime.UtcNow;
+        await _unitOfWork.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<IEnumerable<ChatListItemDto>> SearchChatsAsync(Guid userId, string query)
     {
-        var chats = await _unitOfWork.Chats.SearchChatsAsync(userId, query);
-        return _mapper.Map<IEnumerable<ChatListItemDto>>(chats);
+        var chats = (await _unitOfWork.Chats.SearchChatsAsync(userId, query)).ToList();
+        var unreadByChat = await BuildUnreadMapAsync(chats, userId);
+
+        var mapped = _mapper.Map<List<ChatListItemDto>>(chats);
+        for (var i = 0; i < chats.Count; i++)
+        {
+            if (unreadByChat.TryGetValue(chats[i].Id, out var unread))
+            {
+                mapped[i].UnreadCount = unread;
+            }
+        }
+
+        return mapped;
     }
 
     public async Task<ChatDto> GetOrCreateSavedMessagesAsync(Guid userId)
     {
         var existing = await _unitOfWork.Chats.GetSavedMessagesChatAsync(userId);
         if (existing != null)
-            return _mapper.Map<ChatDto>(existing);
+        {
+            var existingDto = _mapper.Map<ChatDto>(existing);
+            existingDto.UnreadCount = await GetUnreadCountForChatAsync(existing, userId);
+            return existingDto;
+        }
 
         var chat = new Chat
         {
@@ -123,6 +166,28 @@ public class ChatAppService : IChatAppService
 
         // Re-fetch with includes so mapper has the participant User navigation
         var created = await _unitOfWork.Chats.GetChatWithParticipantsAsync(chat.Id);
-        return _mapper.Map<ChatDto>(created!);
+        var createdDto = _mapper.Map<ChatDto>(created!);
+        createdDto.UnreadCount = await GetUnreadCountForChatAsync(created!, userId);
+        return createdDto;
+    }
+
+    private async Task<Dictionary<Guid, int>> BuildUnreadMapAsync(IReadOnlyList<Chat> chats, Guid userId)
+    {
+        var tasks = chats.Select(async chat => new
+        {
+            chat.Id,
+            Unread = await GetUnreadCountForChatAsync(chat, userId)
+        });
+
+        var results = await Task.WhenAll(tasks);
+        return results.ToDictionary(x => x.Id, x => x.Unread);
+    }
+
+    private async Task<int> GetUnreadCountForChatAsync(Chat chat, Guid userId)
+    {
+        var participant = chat.Participants.FirstOrDefault(p => p.UserId == userId);
+        if (participant == null) return 0;
+
+        return await _unitOfWork.Messages.GetUnreadCountAsync(chat.Id, userId, participant.LastReadAt);
     }
 }
