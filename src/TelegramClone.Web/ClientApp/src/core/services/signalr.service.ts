@@ -1,11 +1,11 @@
 import { Injectable, signal } from '@angular/core';
 
-declare var signalR: any;
-
 @Injectable({ providedIn: 'root' })
 export class SignalRService {
   private connection: any = null;
+  private connecting = false;
   isConnected = signal(false);
+  private visibilityHandler: (() => void) | null = null;
 
   private messageHandlers: ((message: any) => void)[] = [];
   private messageDeletedHandlers: ((messageId: string) => void)[] = [];
@@ -19,7 +19,8 @@ export class SignalRService {
   private keyChangeHandlers: ((data: { userId: string; timestamp: string }) => void)[] = [];
 
   async start(): Promise<void> {
-    if (this.connection) return;
+    if (this.connection || this.connecting) return;
+    this.connecting = true;
 
     try {
       // Dynamic import for @microsoft/signalr
@@ -81,15 +82,35 @@ export class SignalRService {
 
       await this.connection.start();
       this.isConnected.set(true);
+
+      // Reconnect when tab becomes visible (handles mobile/sleep disconnects)
+      this.removeVisibilityHandler();
+      this.visibilityHandler = () => {
+        if (document.visibilityState === 'visible' && this.connection && !this.isConnected()) {
+          this.connection.start().then(() => this.isConnected.set(true)).catch(() => {});
+        }
+      };
+      document.addEventListener('visibilitychange', this.visibilityHandler);
     } catch (err) {
       console.error('SignalR connection failed:', err);
+      this.connection = null;
       this.isConnected.set(false);
+    } finally {
+      this.connecting = false;
+    }
+  }
+
+  private removeVisibilityHandler(): void {
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
     }
   }
 
   async stop(): Promise<void> {
+    this.removeVisibilityHandler();
     if (this.connection) {
-      await this.connection.stop();
+      try { await this.connection.stop(); } catch {}
       this.connection = null;
       this.isConnected.set(false);
     }

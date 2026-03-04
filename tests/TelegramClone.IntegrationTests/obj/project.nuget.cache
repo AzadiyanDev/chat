@@ -87,5 +87,15 @@
     "C:\\Users\\Pixel\\.nuget\\packages\\xunit.extensibility.execution\\2.9.3\\xunit.extensibility.execution.2.9.3.nupkg.sha512",
     "C:\\Users\\Pixel\\.nuget\\packages\\xunit.runner.visualstudio\\3.0.2\\xunit.runner.visualstudio.3.0.2.nupkg.sha512"
   ],
-  "logs": []
+  "logs": [
+    {
+      "code": "NU1900",
+      "level": "Warning",
+      "message": "Error occurred while getting package vulnerability data: Unable to load the service index for source https://api.nuget.org/v3/index.json.",
+      "projectPath": "D:\\Projects\\chat\\tests\\TelegramClone.IntegrationTests\\TelegramClone.IntegrationTests.csproj",
+      "warningLevel": 1,
+      "filePath": "D:\\Projects\\chat\\tests\\TelegramClone.IntegrationTests\\TelegramClone.IntegrationTests.csproj",
+      "targetGraphs": []
+    }
+  ]
 }

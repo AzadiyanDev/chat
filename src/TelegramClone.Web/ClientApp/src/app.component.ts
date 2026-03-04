@@ -1,4 +1,4 @@
-import { Component, inject, afterNextRender } from '@angular/core';
+import { Component, inject, afterNextRender, effect, DestroyRef } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { ThemeService } from './core/services/theme.service';
 import { AuthService } from './core/services/auth.service';
@@ -31,15 +31,25 @@ export class AppComponent {
   private themeService = inject(ThemeService);
   auth = inject(AuthService);
   private signalR = inject(SignalRService);
+  private destroyRef = inject(DestroyRef);
+  private isBrowser = false;
 
   constructor() {
     afterNextRender(async () => {
+      this.isBrowser = true;
       this.themeService.init();
       await this.auth.initialize();
+    });
 
-      // Start SignalR if authenticated
-      if (this.auth.isAuthenticated()) {
+    // Reactive SignalR lifecycle: start/stop based on auth state
+    effect(async () => {
+      const authenticated = this.auth.isAuthenticated();
+      if (!this.isBrowser) return;
+
+      if (authenticated) {
         await this.signalR.start();
+      } else {
+        await this.signalR.stop();
       }
     });
   }

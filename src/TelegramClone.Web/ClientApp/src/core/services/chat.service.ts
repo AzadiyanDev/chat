@@ -419,7 +419,8 @@ export class ChatService {
     });
 
     // Fire-and-forget API send for own messages
-    if (this.sameId(message.senderId, this.currentUser().id)) {
+    // Skip for voice messages — the component handles upload + send separately
+    if (this.sameId(message.senderId, this.currentUser().id) && !message.voice) {
       this.api.sendMessage(message.chatId, {
         text: message.text,
         replyToId: message.replyToId,

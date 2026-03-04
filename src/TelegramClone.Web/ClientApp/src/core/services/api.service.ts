@@ -70,6 +70,12 @@ export class ApiService {
       size?: number;
       thumbnailUrl?: string;
     }>;
+    voice?: {
+      url: string;
+      duration: number;
+      durationMs: number;
+      waveform: number[];
+    };
   }): Observable<any> {
     return this.http.post(`${this.baseUrl}/chats/${chatId}/messages`, data);
   }

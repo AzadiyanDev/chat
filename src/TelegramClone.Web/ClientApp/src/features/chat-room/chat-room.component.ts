@@ -1710,27 +1710,65 @@ export class ChatRoomComponent implements OnDestroy {
     const result = await this.voiceRecorder.stopRecording();
     if (result && result.durationMs > 0) {
       const tempId = 'm_' + Math.random().toString(36).substring(2, 9);
+
+      // Optimistic local message with local blob URL while uploading
+      const localVoice = {
+        storageKey: result.storageKey,
+        url: result.blobUrl,
+        duration: Math.round(result.durationMs / 1000),
+        durationMs: result.durationMs,
+        waveform: result.waveform
+      };
       this.chatService.addMessage({
         id: tempId,
         chatId: this.chatId,
         senderId: this.chatService.currentUser().id,
         timestamp: Date.now(),
-        status: 'sent',
-        voice: {
-          storageKey: result.storageKey,
-          url: result.blobUrl,
-          duration: Math.round(result.durationMs / 1000),
-          durationMs: result.durationMs,
-          waveform: result.waveform
-        }
+        status: 'sending',
+        voice: localVoice
       });
       this.audioService.playSendSound();
-      
+
       setTimeout(() => {
         this.scrollToBottom();
         const el = document.getElementById('msg-' + tempId);
         if (el) this.animationService.popInMessage(el);
       }, 50);
+
+      // Upload voice blob to server, then update message with server URL to trigger API send
+      try {
+        const ext = result.blob.type?.includes('ogg') ? 'ogg' : 'webm';
+        const fileName = `voice_${Date.now()}.${ext}`;
+        const uploadResult = await this.api.uploadVoice(result.blob, fileName).toPromise();
+        if (uploadResult?.url) {
+          // Update the message voice URL to the server path so chat.service sends it to the API
+          this.chatService.updateMessage(tempId, {
+            voice: { ...localVoice, url: uploadResult.url },
+            status: 'sent'
+          });
+          // Now actually send via API with server URL
+          this.api.sendMessage(this.chatId, {
+            voice: {
+              url: uploadResult.url,
+              duration: localVoice.duration,
+              durationMs: localVoice.durationMs,
+              waveform: localVoice.waveform
+            }
+          }).subscribe({
+            next: (raw: any) => {
+              if (!raw) return;
+              this.chatService.updateMessage(tempId, { status: 'delivered' });
+            },
+            error: (err: any) => {
+              console.error('Failed to send voice message:', err);
+              this.chatService.updateMessage(tempId, { status: 'sending' });
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Failed to upload voice:', err);
+        this.chatService.updateMessage(tempId, { status: 'sending' });
+      }
     }
   }
   

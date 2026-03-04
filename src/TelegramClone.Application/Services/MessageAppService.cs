@@ -49,6 +49,24 @@ public class MessageAppService : IMessageAppService
             Attachments = attachments
         };
 
+        // Handle voice note if provided
+        if (dto.Voice != null && !string.IsNullOrWhiteSpace(dto.Voice.Url))
+        {
+            // Security: only allow URLs under /uploads/voices/
+            var voiceUrl = dto.Voice.Url.Trim();
+            if (!voiceUrl.StartsWith("/uploads/voices/", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Invalid voice URL.");
+
+            var voiceNote = new VoiceNote
+            {
+                Url = voiceUrl,
+                Duration = dto.Voice.Duration,
+                DurationMs = dto.Voice.DurationMs
+            };
+            voiceNote.SetWaveform(dto.Voice.Waveform ?? Array.Empty<double>());
+            message.VoiceNote = voiceNote;
+        }
+
         await _unitOfWork.Messages.AddAsync(message);
         await _unitOfWork.SaveChangesAsync();
 

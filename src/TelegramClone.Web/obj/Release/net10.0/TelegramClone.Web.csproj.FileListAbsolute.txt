@@ -236,3 +236,4 @@ D:\Projects\chat\src\TelegramClone.Web\obj\Release\net10.0\refint\TelegramClone.
 D:\Projects\chat\src\TelegramClone.Web\obj\Release\net10.0\TelegramClone.Web.pdb
 D:\Projects\chat\src\TelegramClone.Web\obj\Release\net10.0\TelegramClone.Web.genruntimeconfig.cache
 D:\Projects\chat\src\TelegramClone.Web\obj\Release\net10.0\ref\TelegramClone.Web.dll
+D:\Projects\chat\src\TelegramClone.Web\bin\Release\net10.0\dotnet-tools.json

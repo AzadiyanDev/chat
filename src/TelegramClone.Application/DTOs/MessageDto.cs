@@ -25,6 +25,15 @@ public class SendMessageDto
     public string? Text { get; set; }
     public Guid? ReplyToId { get; set; }
     public List<SendAttachmentDto> Attachments { get; set; } = new();
+    public SendVoiceDto? Voice { get; set; }
+}
+
+public class SendVoiceDto
+{
+    public string Url { get; set; } = string.Empty;
+    public double Duration { get; set; }
+    public int DurationMs { get; set; }
+    public double[] Waveform { get; set; } = Array.Empty<double>();
 }
 
 public class SendAttachmentDto
