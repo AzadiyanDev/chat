@@ -1,6 +1,0 @@
-{
-  "TelegramClone.Application, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "D:\\Projects\\chat\\src\\TelegramClone.Application",
-  "TelegramClone.Domain, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "D:\\Projects\\chat\\src\\TelegramClone.Domain",
-  "TelegramClone.Infrastructure, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "D:\\Projects\\chat\\src\\TelegramClone.Infrastructure",
-  "TelegramClone.Web, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null": "D:\\Projects\\chat\\src\\TelegramClone.Web"
-}
