@@ -14,7 +14,7 @@ import { TypingIndicatorComponent } from '../../shared/components/typing-indicat
 import { DateSeparatorComponent } from '../../shared/components/date-separator.component';
 import { ForwardMessageModalComponent } from '../../shared/components/forward-message-modal.component';
 import { ShortTimePipe } from '../../shared/pipes/time.pipe';
-import { Message, Attachment } from '../../models/chat.model';
+import { Message, Attachment, User } from '../../models/chat.model';
 import { firstValueFrom } from 'rxjs';
 
 declare var gsap: any;
@@ -759,7 +759,7 @@ export class ChatRoomComponent implements OnDestroy {
     }
     if (c.type === 'group') return `${c.memberCount || c.participants.length} members`;
     if (c.type === 'channel') return `${c.memberCount?.toLocaleString()} subscribers`;
-    return this.participant()?.isOnline ? 'online' : 'last seen recently';
+    return this.getDirectUserStatusText(this.participant());
   });
 
   peerProfile = computed<PeerProfileInfo | null>(() => {
@@ -775,7 +775,7 @@ export class ChatRoomComponent implements OnDestroy {
         username: this.normalizeProfileHandle(p.username || p.name || 'user'),
         bio: p.bio || 'No bio yet',
         avatarUrl: p.avatarUrl,
-        status: p.isOnline ? 'online' : 'last seen recently'
+        status: this.getDirectUserStatusText(p)
       };
     }
 
@@ -1018,6 +1018,58 @@ export class ChatRoomComponent implements OnDestroy {
     if (diff < 86400000 && d.getDate() === now.getDate()) return 'Today';
     if (diff < 172800000) return 'Yesterday';
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  private getDirectUserStatusText(user?: User): string {
+    if (!user) return '';
+    if (user.isOnline) return 'online';
+    return this.formatLastSeen(user.lastSeen);
+  }
+
+  private formatLastSeen(lastSeen?: number): string {
+    if (!lastSeen || !Number.isFinite(lastSeen)) {
+      return 'last seen recently';
+    }
+
+    const now = Date.now();
+    const safeLastSeen = Math.min(lastSeen, now);
+    const diffMs = Math.max(0, now - safeLastSeen);
+    const oneMinute = 60 * 1000;
+    const oneHour = 60 * oneMinute;
+
+    if (diffMs < oneMinute) {
+      return 'last seen just now';
+    }
+
+    if (diffMs < oneHour) {
+      const minutes = Math.max(1, Math.floor(diffMs / oneMinute));
+      return `last seen ${minutes} min ago`;
+    }
+
+    const date = new Date(safeLastSeen);
+    const nowDate = new Date(now);
+    const timeText = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const isSameDay =
+      date.getFullYear() === nowDate.getFullYear()
+      && date.getMonth() === nowDate.getMonth()
+      && date.getDate() === nowDate.getDate();
+    if (isSameDay) {
+      return `last seen today at ${timeText}`;
+    }
+
+    const yesterday = new Date(nowDate);
+    yesterday.setDate(nowDate.getDate() - 1);
+    const isYesterday =
+      date.getFullYear() === yesterday.getFullYear()
+      && date.getMonth() === yesterday.getMonth()
+      && date.getDate() === yesterday.getDate();
+    if (isYesterday) {
+      return `last seen yesterday at ${timeText}`;
+    }
+
+    const dateText = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `last seen ${dateText} at ${timeText}`;
   }
 
   onInputTextChange(val: string) {

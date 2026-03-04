@@ -4,7 +4,7 @@ import { VoiceStorageService } from './voice-storage.service';
 import { AudioService } from './audio.service';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
-import { SignalRService } from './signalr.service';
+import { SignalRService, PresenceEventPayload } from './signalr.service';
 import { E2eeMessageService } from './e2ee-message.service';
 
 const STATUS_MAP: Record<number, Message['status']> = { 0: 'sending', 1: 'sent', 2: 'delivered', 3: 'seen' };
@@ -168,8 +168,8 @@ export class ChatService {
     this.hub.onUserTyping((chatId, userId) => this.setTyping(chatId, userId, true));
     this.hub.onUserStoppedTyping((chatId, userId) => this.setTyping(chatId, userId, false));
 
-    this.hub.onUserOnline((userId) => this.updateUserOnlineStatus(userId, true));
-    this.hub.onUserOffline((userId) => this.updateUserOnlineStatus(userId, false));
+    this.hub.onUserOnline((payload) => this.applyPresencePayload(payload, true));
+    this.hub.onUserOffline((payload) => this.applyPresencePayload(payload, false));
 
     this.hub.onMessageStatusChanged((messageId, status) => {
       this.updateMessage(messageId, { status: this.normalizeMessageStatus(status) });
@@ -889,23 +889,49 @@ export class ChatService {
     });
   }
 
-  private updateUserOnlineStatus(userId: string, isOnline: boolean) {
+  private applyPresencePayload(payload: PresenceEventPayload, fallbackIsOnline: boolean) {
+    const userId = String(payload?.userId ?? '').trim();
+    if (!userId) return;
+
+    const isOnline = typeof payload?.isOnline === 'boolean' ? payload.isOnline : fallbackIsOnline;
+    const rawLastSeen = payload?.lastSeenUtc ?? payload?.changedAtUtc ?? undefined;
+    const parsedLastSeen = this.parseTimestamp(rawLastSeen);
+    this.updateUserOnlineStatus(userId, isOnline, parsedLastSeen);
+  }
+
+  private parseTimestamp(raw: unknown): number | undefined {
+    if (raw == null) return undefined;
+    if (typeof raw === 'number') {
+      return Number.isFinite(raw) ? raw : undefined;
+    }
+
+    const text = String(raw).trim();
+    if (!text) return undefined;
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private updateUserOnlineStatus(userId: string, isOnline: boolean, lastSeenAt?: number) {
     const cached = this.usersCache.get(userId);
     if (cached) {
-      this.usersCache.set(userId, { ...cached, isOnline, lastSeen: isOnline ? undefined : Date.now() });
+      const nextLastSeen = isOnline ? undefined : Math.max(lastSeenAt ?? 0, cached.lastSeen ?? 0, Date.now());
+      this.usersCache.set(userId, { ...cached, isOnline, lastSeen: nextLastSeen });
     }
+
     // Targeted update: only spread chats that contain this user as a participant
     this.chats.update(chats => {
       let changed = false;
       const result = chats.map(chat => {
         const idx = chat.participants.findIndex(p => this.sameId(p.id, userId));
-        if (idx === -1) return chat; // Unchanged — same reference
+        if (idx === -1) return chat;
         changed = true;
         const newParticipants = [...chat.participants];
-        newParticipants[idx] = { ...newParticipants[idx], isOnline, lastSeen: isOnline ? undefined : Date.now() };
+        const previous = newParticipants[idx];
+        const nextLastSeen = isOnline ? undefined : Math.max(lastSeenAt ?? 0, previous.lastSeen ?? 0, Date.now());
+        newParticipants[idx] = { ...previous, isOnline, lastSeen: nextLastSeen };
         return { ...chat, participants: newParticipants };
       });
-      return changed ? result : chats; // Avoid new array reference if nothing changed
+      return changed ? result : chats;
     });
   }
 }

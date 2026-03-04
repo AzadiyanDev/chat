@@ -1,5 +1,12 @@
 import { Injectable, signal } from '@angular/core';
 
+export interface PresenceEventPayload {
+  userId: string;
+  isOnline: boolean;
+  lastSeenUtc?: string | null;
+  changedAtUtc?: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class SignalRService {
   private connection: any = null;
@@ -12,8 +19,8 @@ export class SignalRService {
   private reactionHandlers: ((message: any) => void)[] = [];
   private typingHandlers: ((chatId: string, userId: string) => void)[] = [];
   private stoppedTypingHandlers: ((chatId: string, userId: string) => void)[] = [];
-  private onlineHandlers: ((userId: string) => void)[] = [];
-  private offlineHandlers: ((userId: string) => void)[] = [];
+  private onlineHandlers: ((payload: PresenceEventPayload) => void)[] = [];
+  private offlineHandlers: ((payload: PresenceEventPayload) => void)[] = [];
   private statusHandlers: ((messageId: string, status: string) => void)[] = [];
   private envelopeReadyHandlers: ((data: { destinationDeviceId: number; timestamp: string }) => void)[] = [];
   private keyChangeHandlers: ((data: { userId: string; timestamp: string }) => void)[] = [];
@@ -52,12 +59,16 @@ export class SignalRService {
         this.stoppedTypingHandlers.forEach(h => h(chatId, userId));
       });
 
-      this.connection.on('UserOnline', (userId: string) => {
-        this.onlineHandlers.forEach(h => h(userId));
+      this.connection.on('UserOnline', (raw: any) => {
+        const payload = this.normalizePresencePayload(raw, true);
+        if (!payload) return;
+        this.onlineHandlers.forEach(h => h(payload));
       });
 
-      this.connection.on('UserOffline', (userId: string) => {
-        this.offlineHandlers.forEach(h => h(userId));
+      this.connection.on('UserOffline', (raw: any) => {
+        const payload = this.normalizePresencePayload(raw, false);
+        if (!payload) return;
+        this.offlineHandlers.forEach(h => h(payload));
       });
 
       this.connection.on('MessageStatusChanged', (messageId: string, status: string) => {
@@ -181,12 +192,12 @@ export class SignalRService {
     return () => { this.stoppedTypingHandlers = this.stoppedTypingHandlers.filter(h => h !== handler); };
   }
 
-  onUserOnline(handler: (userId: string) => void): () => void {
+  onUserOnline(handler: (payload: PresenceEventPayload) => void): () => void {
     this.onlineHandlers.push(handler);
     return () => { this.onlineHandlers = this.onlineHandlers.filter(h => h !== handler); };
   }
 
-  onUserOffline(handler: (userId: string) => void): () => void {
+  onUserOffline(handler: (payload: PresenceEventPayload) => void): () => void {
     this.offlineHandlers.push(handler);
     return () => { this.offlineHandlers = this.offlineHandlers.filter(h => h !== handler); };
   }
@@ -204,5 +215,23 @@ export class SignalRService {
   onKeyBundleChanged(handler: (data: { userId: string; timestamp: string }) => void): () => void {
     this.keyChangeHandlers.push(handler);
     return () => { this.keyChangeHandlers = this.keyChangeHandlers.filter(h => h !== handler); };
+  }
+
+  private normalizePresencePayload(raw: any, isOnline: boolean): PresenceEventPayload | null {
+    if (typeof raw === 'string' || typeof raw === 'number') {
+      const userId = String(raw ?? '').trim();
+      if (!userId) return null;
+      return { userId, isOnline };
+    }
+
+    const userId = String(raw?.userId ?? '').trim();
+    if (!userId) return null;
+
+    return {
+      userId,
+      isOnline: typeof raw?.isOnline === 'boolean' ? raw.isOnline : isOnline,
+      lastSeenUtc: raw?.lastSeenUtc ?? null,
+      changedAtUtc: raw?.changedAtUtc ?? null
+    };
   }
 }

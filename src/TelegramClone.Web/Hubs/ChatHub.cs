@@ -57,7 +57,13 @@ public class ChatHub : Hub
             if (connectionCount == 1)
             {
                 await _userService.SetOnlineStatusAsync(userId.Value, true);
-                await Clients.Others.SendAsync("UserOnline", userId.Value);
+                await Clients.Others.SendAsync("UserOnline", new
+                {
+                    userId = userId.Value,
+                    isOnline = true,
+                    lastSeenUtc = (DateTime?)null,
+                    changedAtUtc = DateTime.UtcNow
+                });
             }
 
             // Join all user's chat groups (lightweight: only fetches IDs)
@@ -99,8 +105,15 @@ public class ChatHub : Hub
             if (remainingConnections <= 0)
             {
                 UserConnectionCounts.TryRemove(userId.Value, out _);
+                var offlineAtUtc = DateTime.UtcNow;
                 await _userService.SetOnlineStatusAsync(userId.Value, false);
-                await Clients.Others.SendAsync("UserOffline", userId.Value);
+                await Clients.Others.SendAsync("UserOffline", new
+                {
+                    userId = userId.Value,
+                    isOnline = false,
+                    lastSeenUtc = offlineAtUtc,
+                    changedAtUtc = offlineAtUtc
+                });
             }
         }
 
