@@ -162,7 +162,20 @@ app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = spaFileProvider });
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = spaFileProvider,
-    RequestPath = ""
+    RequestPath = "",
+    OnPrepareResponse = ctx =>
+    {
+        var path = ctx.Context.Request.Path.Value ?? string.Empty;
+        if (path.Equals("/index.html", StringComparison.OrdinalIgnoreCase) ||
+            path.Equals("/ngsw.json", StringComparison.OrdinalIgnoreCase) ||
+            path.Equals("/release-manifest.json", StringComparison.OrdinalIgnoreCase))
+        {
+            // Keep SPA shell and update manifest always fresh so new deploys are detected fast.
+            ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+            ctx.Context.Response.Headers["Pragma"] = "no-cache";
+            ctx.Context.Response.Headers["Expires"] = "0";
+        }
+    }
 });
 
 app.UseStaticFiles(); // wwwroot

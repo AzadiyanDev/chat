@@ -1532,7 +1532,7 @@ export class ChatRoomComponent implements OnDestroy {
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+        const mapsUrl = `geo:${lat},${lng}?q=${lat},${lng}`;
         const locationAttachment: Attachment = {
           id: this.randomId('att'),
           type: 'document',
