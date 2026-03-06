@@ -20,6 +20,7 @@ public class Message : BaseEntity
     public Message? ReplyTo { get; set; }
 
     // Navigation properties
+    public ICollection<MessageTextChunk> TextChunks { get; set; } = new List<MessageTextChunk>();
     public ICollection<Attachment> Attachments { get; set; } = new List<Attachment>();
     public VoiceNote? VoiceNote { get; set; }
     public ICollection<Reaction> Reactions { get; set; } = new List<Reaction>();

@@ -11,16 +11,26 @@ public class MessageAppService : IMessageAppService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly IMessageTextProtectionService _messageTextProtection;
 
-    public MessageAppService(IUnitOfWork unitOfWork, IMapper mapper)
+    public MessageAppService(
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        IMessageTextProtectionService messageTextProtection)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _messageTextProtection = messageTextProtection;
     }
 
     public async Task<IEnumerable<MessageDto>> GetMessagesAsync(Guid chatId, int limit = 50, DateTime? before = null)
     {
         var messages = await _unitOfWork.Messages.GetChatMessagesAsync(chatId, limit, before);
+        foreach (var message in messages)
+        {
+            ApplyDecryptedText(message);
+        }
+
         return _mapper.Map<IEnumerable<MessageDto>>(messages);
     }
 
@@ -38,16 +48,18 @@ public class MessageAppService : IMessageAppService
             })
             .ToList();
 
+        var normalizedText = NormalizeText(dto.Text);
         var message = new Message
         {
             ChatId = chatId,
             SenderId = senderId,
-            Text = string.IsNullOrWhiteSpace(dto.Text) ? null : dto.Text.Trim(),
+            Text = null,
             ReplyToId = dto.ReplyToId,
             Status = MessageStatus.Sent,
             Timestamp = DateTime.UtcNow,
             Attachments = attachments
         };
+        SetEncryptedText(message, normalizedText);
 
         // Handle voice note if provided
         if (dto.Voice != null && !string.IsNullOrWhiteSpace(dto.Voice.Url))
@@ -72,23 +84,27 @@ public class MessageAppService : IMessageAppService
 
         // Reload with details (sender, replyTo)
         var saved = await _unitOfWork.Messages.GetMessageWithDetailsAsync(message.Id);
+        ApplyDecryptedText(saved);
         return _mapper.Map<MessageDto>(saved!);
     }
 
     public async Task<MessageDto?> EditMessageAsync(Guid chatId, Guid messageId, Guid userId, EditMessageDto dto)
     {
-        var message = await _unitOfWork.Messages.GetByIdAsync(messageId);
+        var message = await _unitOfWork.Messages.GetMessageWithDetailsAsync(messageId);
         if (message == null || message.ChatId != chatId || message.SenderId != userId || message.IsDeleted) return null;
 
         var updatedText = (dto.Text ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(updatedText))
             throw new ArgumentException("Message text cannot be empty.");
 
-        message.Text = updatedText;
+        message.Text = null;
+        message.TextChunks.Clear();
+        SetEncryptedText(message, updatedText);
         _unitOfWork.Messages.Update(message);
         await _unitOfWork.SaveChangesAsync();
 
         var updated = await _unitOfWork.Messages.GetMessageWithDetailsAsync(message.Id);
+        ApplyDecryptedText(updated);
         return updated == null ? null : _mapper.Map<MessageDto>(updated);
     }
 
@@ -126,6 +142,7 @@ public class MessageAppService : IMessageAppService
         await _unitOfWork.SaveChangesAsync();
 
         var message = await _unitOfWork.Messages.GetMessageWithDetailsAsync(messageId);
+        ApplyDecryptedText(message);
         return _mapper.Map<MessageDto>(message);
     }
 
@@ -143,20 +160,26 @@ public class MessageAppService : IMessageAppService
     {
         var original = await _unitOfWork.Messages.GetMessageWithDetailsAsync(messageId);
         if (original == null) return null;
+        ApplyDecryptedText(original);
+        var forwardedText = string.IsNullOrWhiteSpace(original.Text)
+            ? "Forwarded message"
+            : $"Forwarded: {original.Text}";
 
         var forwarded = new Message
         {
             ChatId = targetChatId,
             SenderId = userId,
-            Text = $"Forwarded: {original.Text}",
+            Text = null,
             Status = MessageStatus.Sent,
             Timestamp = DateTime.UtcNow
         };
+        SetEncryptedText(forwarded, forwardedText);
 
         await _unitOfWork.Messages.AddAsync(forwarded);
         await _unitOfWork.SaveChangesAsync();
 
         var saved = await _unitOfWork.Messages.GetMessageWithDetailsAsync(forwarded.Id);
+        ApplyDecryptedText(saved);
         return _mapper.Map<MessageDto>(saved);
     }
 
@@ -168,5 +191,47 @@ public class MessageAppService : IMessageAppService
         message.Status = status;
         _unitOfWork.Messages.Update(message);
         await _unitOfWork.SaveChangesAsync();
+    }
+
+    private static string? NormalizeText(string? text)
+    {
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
+
+    private void SetEncryptedText(Message message, string? plaintext)
+    {
+        if (string.IsNullOrWhiteSpace(plaintext))
+            return;
+
+        var encryptedChunks = _messageTextProtection.Encrypt(message.ChatId, message.Id, plaintext);
+        foreach (var chunk in encryptedChunks)
+        {
+            message.TextChunks.Add(new MessageTextChunk
+            {
+                ChunkIndex = chunk.ChunkIndex,
+                Payload = chunk.Payload
+            });
+        }
+    }
+
+    private void ApplyDecryptedText(Message? message)
+    {
+        if (message == null)
+            return;
+
+        message.Text = _messageTextProtection.Decrypt(
+            message.ChatId,
+            message.Id,
+            message.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
+            message.Text);
+
+        if (message.ReplyTo != null)
+        {
+            message.ReplyTo.Text = _messageTextProtection.Decrypt(
+                message.ReplyTo.ChatId,
+                message.ReplyTo.Id,
+                message.ReplyTo.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
+                message.ReplyTo.Text);
+        }
     }
 }

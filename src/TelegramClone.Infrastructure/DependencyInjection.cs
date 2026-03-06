@@ -16,6 +16,9 @@ public static class DependencyInjection
     {
         services.AddHttpContextAccessor();
 
+        services.AddOptions<MessageTextProtectionOptions>()
+            .BindConfiguration("MessageTextProtection");
+
         // EF Core + SQL Server
         services.AddDbContext<TelegramDbContext>(options =>
             options.UseSqlServer(connectionString));
@@ -61,6 +64,7 @@ public static class DependencyInjection
         // Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddSingleton<IFileStorageService>(new LocalFileStorageService(uploadPath));
+        services.AddSingleton<IMessageTextProtectionService, MessageTextProtectionService>();
 
         // E2EE encrypted attachment service (needs storage path)
         services.AddScoped<IEncryptedAttachmentService>(sp =>

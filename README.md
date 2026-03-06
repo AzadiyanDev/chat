@@ -1,79 +1,266 @@
-# TelegramClone (AzadiyanChat)
+﻿# TelegramClone (AzadiyanChat)
 
-این مخزن یک نمونه‌ی نسبتاً کامل از یک پیام‌رسان شبیه تلگرام است که با معماری چندلایه‌ی .NET در بک‌اند و Angular در فرانت‌اند پیاده‌سازی شده و هم‌زمان چند مسیر پیام‌رسانی را پوشش می‌دهد:
+یک پیام‌رسان Full-Stack با معماری چندلایه (Clean-ish Architecture) روی .NET و Angular، با دو مسیر امنیتی برای پیام:
 
-- چت معمولی (پیام متنی، واکنش، فوروارد، حذف، فایل، ویس)
+1. مسیر عادی چت (`/api/chats/...`) با **رمزنگاری متن پیام در دیتابیس** (At-Rest Encryption)
+2. مسیر E2EE (`/api/envelopes`) با **Signal Protocol** برای ارتباط دستگاه‌به‌دستگاه
+
+این README برای استفاده مستقیم در ریپازیتوری گیت نوشته شده و سعی کرده هم معماری پروژه را کامل توضیح بدهد و هم مسیر امنیت/رمزنگاری پیام را شفاف کند.
+
+---
+
+## فهرست مطالب
+
+1. [معرفی پروژه](#معرفی-پروژه)
+2. [ویژگی‌ها](#ویژگیها)
+3. [معماری کلی](#معماری-کلی)
+4. [استک تکنولوژی](#استک-تکنولوژی)
+5. [مدل‌های رمزنگاری در پروژه](#مدلهای-رمزنگاری-در-پروژه)
+6. [روند کامل متن تا گیرنده](#روند-کامل-متن-تا-گیرنده)
+7. [مثال‌های عملی](#مثالهای-عملی)
+8. [نصب و اجرا](#نصب-و-اجرا)
+9. [تنظیمات امنیتی مهم](#تنظیمات-امنیتی-مهم)
+10. [API خلاصه](#api-خلاصه)
+11. [تست‌ها](#تستها)
+12. [ساختار پوشه‌ها](#ساختار-پوشهها)
+13. [نکات امنیتی و محدودیت‌ها](#نکات-امنیتی-و-محدودیتها)
+
+---
+
+## معرفی پروژه
+
+`TelegramClone` (AzadiyanChat) یک نمونه جدی از پیام‌رسان مدرن است که این موارد را پوشش می‌دهد:
+
+- چت خصوصی/گروهی
+- ارسال پیام متنی، فایل، ویس، ری‌اکشن، فوروارد
 - Real-time با SignalR
-- هسته‌ی E2EE چنددستگاهی (Device/KeyBundle/Envelope)
-- زیرساخت فایل‌های رمز‌شده و Saved Messages Crypto
-- PWA + Service Worker
+- مدیریت چند دستگاه (Multi-Device)
+- زیرساخت E2EE مبتنی بر Bundle/Envelope
+- ذخیره‌سازی امن‌تر پیام در دیتابیس با کلیدهای مشتق‌شده‌ی پویا
 
-## 1. معماری کلان پروژه
+---
 
-پروژه به‌صورت Solution چندپروژه‌ای با `TelegramClone.slnx` مدیریت می‌شود:
+## ویژگی‌ها
 
-| لایه | پروژه | مسئولیت |
-|---|---|---|
-| Domain | `src/TelegramClone.Domain` | مدل‌های دامنه، enumها، قرارداد ریپازیتوری‌ها |
-| Application | `src/TelegramClone.Application` | DTOها، اینترفیس سرویس‌ها، منطق Use Case |
-| Infrastructure | `src/TelegramClone.Infrastructure` | EF Core + Identity + ریپازیتوری‌ها + سرویس‌های ذخیره‌سازی |
-| Web/API | `src/TelegramClone.Web` | Web API، SignalR Hub، Middleware، میزبانی SPA |
-| Frontend | `src/TelegramClone.Web/ClientApp` | اپ Angular (Standalone + Zoneless) |
+- Backend: ASP.NET Core + EF Core + Identity
+- Frontend: Angular Standalone + SignalR client + PWA
+- Rate limiting برای Auth / Envelopes / Keys / Uploads
+- Security headers و hardening برای cookie/session
+- رمزنگاری chunk-based برای متن پیام در دیتابیس
+- E2EE پیام‌ها با Signal Protocol در مسیر envelopes
+- رمزنگاری فایل/ویس با `libsodium secretstream`
 
-Dependency direction رعایت شده:
+---
+
+## معماری کلی
+
+لایه‌ها:
+
+- `TelegramClone.Domain`: موجودیت‌ها، enumها، قراردادهای repository
+- `TelegramClone.Application`: use-caseها، DTOها، سرویس‌های اپلیکیشن
+- `TelegramClone.Infrastructure`: EF/Identity/Repository/Services
+- `TelegramClone.Web`: API + SignalR + Hosting + middleware
+- `ClientApp`: رابط کاربری Angular
+
+وابستگی‌ها:
 
 - `Web -> Application + Infrastructure`
 - `Infrastructure -> Application + Domain`
 - `Application -> Domain`
 - `Domain` مستقل
 
-## 2. تکنولوژی‌ها
+---
+
+## استک تکنولوژی
 
 ### Backend
 
-- .NET SDK: `10.0.102`
+- .NET 10
 - ASP.NET Core Web API
-- Entity Framework Core `10.0.3` (SQL Server)
+- Entity Framework Core 10 (SQL Server)
 - ASP.NET Core Identity
-- AutoMapper
-- FluentValidation DI
 - SignalR
-- Rate Limiting middleware
 
 ### Frontend
 
-- Angular `21.x` (Standalone components)
+- Angular 21
 - RxJS
-- SignalR client (`@microsoft/signalr`)
-- GSAP
-- libsodium + libsignal-protocol-typescript + argon2-browser
-- PWA (`@angular/service-worker`)
+- `@microsoft/signalr`
+- `@privacyresearch/libsignal-protocol-typescript`
+- `libsodium-wrappers-sumo`
+- `argon2-browser`
 
-## 3. پیش‌نیاز اجرا
+---
 
-- .NET 10 SDK
-- Node.js 22+ و npm 10+
-- SQL Server LocalDB یا SQL Server معمولی
+## مدل‌های رمزنگاری در پروژه
 
-## 4. راه‌اندازی پروژه
+این پروژه چند مدل امنیتی/رمزنگاری دارد. خیلی مهم است که مسیرها را با هم قاطی نکنیم.
 
-## 4.1 اجرای بک‌اند
+### 1) رمزنگاری متن پیام در دیتابیس (At-Rest, Server-Side)
 
-از ریشه:
+**مسیر:** `POST /api/chats/{chatId}/messages`
+
+- متن قبل از ذخیره شدن در DB به chunk تبدیل می‌شود.
+- هر chunk با AES-GCM رمز می‌شود.
+- کلیدها استاتیک برای همه پیام‌ها نیستند و به صورت سلسله‌ای مشتق می‌شوند:
+
+```text
+masterKey
+  -> chatKey(chatId)
+    -> messageKey(messageId)
+      -> chunkKey(chunkIndex)
+```
+
+فرمت payload هر chunk:
+
+```text
+[1-byte version][12-byte nonce][16-byte tag][ciphertext...]
+```
+
+نسخه فعلی: `v2`
+
+AAD برای هر chunk شامل این مقادیر است:
+
+- `chatId`
+- `messageId`
+- `chunkIndex`
+
+پس اگر payload یک chunk جابجا یا دستکاری شود، decrypt fail می‌شود.
+
+### 2) E2EE واقعی برای Envelopeها (Device-to-Device)
+
+**مسیر:** `/api/envelopes`, `/api/keys`, `/api/devices`
+
+- کلاینت با Signal Protocol (X3DH + Double Ratchet) پیام را روی دستگاه رمز می‌کند.
+- سرور فقط ciphertext را صف می‌کند و decrypt نمی‌کند.
+- دریافت‌کننده ciphertext را با کلیدهای محلی decrypt می‌کند.
+
+### 3) E2EE فایل/ویس
+
+- فایل/ویس روی کلاینت با `libsodium secretstream_xchacha20poly1305` به chunkهای رمز شده تبدیل می‌شود.
+- سرور فقط chunkهای ciphertext را نگه می‌دارد.
+- متادیتای decrypt (key/header/digest) داخل envelope رمز شده منتقل می‌شود.
+
+### 4) Saved Messages Vault
+
+- برای Saved Messages از کلید vault محلی + HKDF chain ratchet استفاده شده.
+- رمزنگاری پیام: AES-256-GCM با AAD.
+- state کلیدها در KeyStore رمز شده روی کلاینت نگه‌داری می‌شود.
+
+---
+
+## روند کامل متن تا گیرنده
+
+### سناریو A: پیام عادی چت (`/api/chats/...`)
+
+1. فرستنده متن را در UI می‌نویسد.
+2. کلاینت درخواست `POST /api/chats/{chatId}/messages` می‌زند.
+3. سرور عضویت کاربر در چت را چک می‌کند.
+4. `MessageAppService` متن را chunk می‌کند.
+5. `MessageTextProtectionService` با کلیدهای مشتق‌شده‌ی per-chat/per-message/per-chunk رمز می‌کند.
+6. در DB، `Messages.Text = null` و فقط `MessageTextChunks.Payload` ذخیره می‌شود.
+7. سرور برای response و broadcast، متن را decrypt می‌کند و از SignalR رویداد `ReceiveMessage` می‌فرستد.
+8. گیرنده پیام را Real-time می‌بیند.
+9. برای تاریخچه هم سرور chunkها را decrypt و برمی‌گرداند.
+
+### سناریو B: پیام E2EE (`/api/envelopes`)
+
+1. کلاینت فرستنده برای هر دستگاه مقصد session می‌سازد/بازیابی می‌کند.
+2. plaintext با Signal Protocol روی کلاینت encrypt می‌شود.
+3. envelopeهای ciphertext به سرور submit می‌شوند.
+4. سرور envelopeها را بدون decrypt در queue ذخیره می‌کند.
+5. سرور رویداد `NewEnvelope` می‌فرستد.
+6. گیرنده queue را fetch می‌کند، روی کلاینت decrypt می‌کند و ack می‌دهد.
+
+### سناریو C: فایل/ویس E2EE
+
+1. فایل/ویس روی کلاینت chunk و رمز می‌شود.
+2. chunkهای ciphertext روی `/api/attachments/...` آپلود می‌شوند.
+3. pointer رمزگشایی (contentKey, streamHeader, digest, ...) داخل envelope رمز شده ارسال می‌شود.
+4. گیرنده blob رمز شده را دانلود می‌کند.
+5. digest بررسی می‌شود؛ بعد decrypt انجام می‌شود.
+
+---
+
+## مثال‌های عملی
+
+### مثال 1: پیام متنی عادی
+
+ورودی:
+
+```text
+"سلام دنیا"
+```
+
+روند:
+
+1. سرور `messageId` را دارد (GUID)
+2. متن UTF-8 شده و طبق `ChunkSizeBytes` تکه می‌شود
+3. برای chunk شماره `i`:
+
+```text
+chatKey    = HMAC-SHA256(masterKey,  "tc-chat-key-v1"    || chatId)
+messageKey = HMAC-SHA256(chatKey,    "tc-message-key-v1" || messageId)
+chunkKey   = HMAC-SHA256(messageKey, "tc-chunk-key-v1"   || i)
+nonce      = random(12)
+aad        = chatId || messageId || i
+cipher     = AES-GCM-Encrypt(chunkKey, nonce, plaintextChunk, aad)
+payload    = version(2) || nonce || tag || cipher
+```
+
+خروجی DB:
+
+- جدول `Messages`: متن plaintext ندارد (`Text = null`)
+- جدول `MessageTextChunks`: payload رمز شده هر chunk
+
+### مثال 2: اگر chunk دستکاری شود
+
+- اگر `chatId`، `messageId` یا `chunkIndex` اشتباه شود، tag معتبر نیست.
+- decrypt با خطای cryptographic fail می‌شود.
+
+### مثال 3: envelope E2EE
+
+نمونه payload submit:
+
+```json
+{
+  "senderDeviceId": 1,
+  "envelopes": [
+    {
+      "destinationUserId": "11111111-1111-1111-1111-111111111111",
+      "destinationDeviceId": 2,
+      "type": 1,
+      "content": "BASE64_CIPHERTEXT",
+      "envelopeId": "22222222-2222-2222-2222-222222222222"
+    }
+  ]
+}
+```
+
+سرور فقط:
+
+- اعتبارسنجی هویت و اندازه
+- dedup بر اساس `(destinationDeviceId, envelopeId)`
+- queue + notification
+
+---
+
+## نصب و اجرا
+
+### پیش‌نیاز
+
+- .NET SDK 10
+- Node.js 22+
+- SQL Server یا LocalDB
+
+### اجرای Backend
 
 ```bash
 dotnet build TelegramClone.slnx
 dotnet run --project src/TelegramClone.Web
 ```
 
-Database migration در شروع برنامه به‌صورت خودکار اجرا می‌شود (`SeedData.InitializeAsync`).
-
-Profileهای پیش‌فرض در `launchSettings.json`:
-
-- `https://localhost:7228`
-- `http://localhost:5045`
-
-## 4.2 اجرای فرانت‌اند (Angular)
+### اجرای Frontend
 
 ```bash
 cd src/TelegramClone.Web/ClientApp
@@ -81,533 +268,123 @@ npm install
 npm run start
 ```
 
-فرانت روی `http://localhost:4200` بالا می‌آید.
+پورت‌های رایج:
 
-نکته‌ی مهم: `proxy.conf.json` فعلاً backend را روی `https://localhost:5001` هدف گرفته است. اگر API را با پروفایل فعلی (`7228`) بالا می‌آورید، یکی از این کارها لازم است:
+- API: `https://localhost:7228` (بر اساس launch profile)
+- Angular: `http://localhost:4200`
 
-- یا `proxy.conf.json` را به `https://localhost:7228` تغییر دهید
-- یا backend را روی 5001 اجرا کنید
+---
 
-## 5. جریان راه‌اندازی و Pipeline در `Program.cs`
+## تنظیمات امنیتی مهم
 
-ترتیب مهم اجرا:
-
-1. خواندن ConnectionString و UploadPath
-2. رجیستر کردن لایه‌های `AddApplication()` و `AddInfrastructure(...)`
-3. Controllers + JSON options (camelCase + enum string)
-4. SignalR با `MaximumReceiveMessageSize = 256KB`
-5. RateLimiter Policyها:
-   - `auth`: 5 درخواست/دقیقه/IP
-   - `envelopes`: 60 درخواست/دقیقه/کاربر
-   - `keys`: 30 درخواست/دقیقه/کاربر
-   - `uploads`: 10 درخواست/دقیقه/کاربر
-6. CORS policy با originهای `http://localhost:3000` و `http://localhost:4200`
-7. اجرای migration + seeding
-8. افزودن security headers (CSP, X-Frame-Options, Referrer-Policy, ...)
-9. HTTPS + Routing + Cors + RateLimiter + Authentication + Authorization
-10. سرو فایل‌های SPA از `ClientApp/dist`
-11. سرو فایل‌های `Uploads`:
-    - `/uploads/avatars`
-    - `/uploads/voices`
-    - `/uploads/attachments`
-12. MapControllers + MapHub(`/chatHub`) + SPA fallback
-
-## 6. مدل داده (Domain)
-
-### موجودیت‌های چت
-
-- `User`
-- `Chat`
-- `ChatParticipant`
-- `Message`
-- `Attachment`
-- `VoiceNote`
-- `Reaction`
-
-### موجودیت‌های E2EE
-
-- `DeviceRegistration`
-- `IdentityKeyRecord`
-- `SignedPreKeyRecord`
-- `KyberPreKeyRecord`
-- `OneTimePreKeyRecord`
-- `MessageEnvelope`
-- `EncryptedAttachment`
-
-### Enumها
-
-- `ChatType`: `Direct | Group | Channel | SavedMessages`
-- `MessageStatus`: `Sending | Sent | Delivered | Seen`
-- `AttachmentType`: `Image | Video | Audio | Document`
-- `EnvelopeType`: `PreKeyMessage | NormalMessage | SenderKeyMessage`
-
-## 7. دیتابیس و Migration
-
-Migrationهای اصلی:
-
-- `Initial` (ساخت جداول اصلی پیام‌رسان + Identity)
-- `E2EE` (جداول کلیدها، دستگاه‌ها، envelope و attachment رمز‌شده)
-- `ExpandAvatarUrl` (`DomainUsers.AvatarUrl` از `nvarchar(500)` به `nvarchar(max)`)
-
-در `SeedData`:
-
-- Migration خودکار اجرا می‌شود
-- seed قدیمی چت‌های demo پاک می‌شود
-- اگر `DomainUsers` خالی باشد، 8 کاربر نمونه ساخته می‌شوند
-- یک Identity user نمونه ساخته می‌شود:
-  - Email: `demo@telegram.com`
-  - Password: `Demo@123`
-
-## 8. Reference بک‌اند (Controllers + Routes)
-
-## 8.1 Auth (`/api/auth`)
-
-- `POST /register` ثبت‌نام
-- `POST /login` ورود
-- `POST /logout` خروج
-- `GET /me` کاربر جاری
-
-## 8.2 Chats (`/api/chats`)
-
-- `GET /` لیست چت‌های کاربر
-- `GET /saved` گرفتن/ساخت Saved Messages
-- `GET /{id}` اطلاعات یک چت
-- `POST /` ساخت چت
-- `PUT /{id}/pin` پین/آنپین
-- `GET /search?q=...` جستجو
-
-## 8.3 Messages (`/api/chats/{chatId}/messages`)
-
-- `GET /` لیست پیام‌ها (pagination با `before`)
-- `POST /` ارسال پیام
-- `DELETE /{id}` حذف پیام
-- `POST /{id}/reactions` افزودن/تاگل واکنش
-- `DELETE /{id}/reactions/{emoji}` حذف واکنش
-- `POST /{id}/forward` فوروارد پیام
-
-## 8.4 Users (`/api/users`)
-
-- `GET /search?q=...` جستجوی کاربر
-- `GET /{id}` دریافت کاربر
-- `PUT /profile` بروزرسانی پروفایل
-
-## 8.5 Files (`/api/files`)
-
-- `POST /voice`
-- `POST /avatar`
-- `POST /attachment`
-
-## 8.6 Devices (`/api/devices`)
-
-- `POST /register`
-- `GET /`
-- `DELETE /{deviceId}`
-
-## 8.7 Keys (`/api/keys`)
-
-- `POST /bundle/{deviceId}` آپلود Key Bundle
-- `GET /bundle/{userId}/{deviceId}` گرفتن bundle دستگاه خاص
-- `GET /bundle/{userId}` گرفتن bundle همه دستگاه‌ها
-- `POST /replenish/{deviceId}` شارژ مجدد one-time prekeys
-- `GET /otpk-count/{deviceId}` تعداد prekey باقیمانده
-
-## 8.8 Envelopes (`/api/envelopes`)
-
-- `POST /` ارسال envelopeها
-- `GET /{deviceId}` دریافت queue
-- `POST /ack/{deviceId}` Ack و حذف envelopeهای دریافت‌شده
-
-## 8.9 Attachments رمز‌شده (`/api/attachments`)
-
-- `POST /upload` شروع upload
-- `PUT /{attachmentId}/chunks/{chunkIndex}` آپلود chunk
-- `POST /{attachmentId}/complete` نهایی‌سازی
-- `GET /{attachmentId}` دانلود ciphertext
-
-## 9. سرویس‌های Application و متدها
-
-## 9.1 `ChatAppService`
-
-- `GetUserChatsAsync(userId)`
-- `GetChatByIdAsync(chatId, userId)`
-- `CreateChatAsync(dto, creatorId)` (برای چت مستقیم، dedupe)
-- `PinChatAsync(chatId, userId, isPinned)`
-- `SearchChatsAsync(userId, query)`
-- `GetOrCreateSavedMessagesAsync(userId)`
-
-## 9.2 `MessageAppService`
-
-- `GetMessagesAsync(chatId, limit, before)`
-- `SendMessageAsync(chatId, senderId, dto)` (sanitize متن و attachment)
-- `DeleteMessageAsync(messageId, userId)` (soft delete)
-- `AddReactionAsync(messageId, userId, emoji)` (toggle)
-- `RemoveReactionAsync(messageId, userId, emoji)`
-- `ForwardMessageAsync(messageId, targetChatId, userId)`
-- `UpdateMessageStatusAsync(messageId, status)`
-
-## 9.3 `UserAppService`
-
-- `GetUserByIdAsync(userId)`
-- `UpdateProfileAsync(userId, dto)`
-- `SearchUsersAsync(query)`
-- `SetOnlineStatusAsync(userId, isOnline)`
-
-## 9.4 `DeviceService`
-
-- `RegisterDeviceAsync(userId, dto)`
-- `GetUserDevicesAsync(userId)`
-- `GetDeviceAsync(userId, deviceId)`
-- `RevokeDeviceAsync(userId, deviceId)`
-- `UpdateLastActiveAsync(userId, deviceId)`
-
-## 9.5 `KeyBundleService`
-
-- `UploadBundleAsync(userId, deviceId, dto)`
-- `FetchBundleAsync(targetUserId, targetDeviceId)` (مصرف OTPK)
-- `FetchAllDeviceBundlesAsync(targetUserId)`
-- `ReplenishPreKeysAsync(userId, deviceId, dto)`
-- `GetOneTimePreKeyCountAsync(userId, deviceId)`
-
-## 9.6 `MessageEnvelopeService`
-
-- `SubmitEnvelopesAsync(senderUserId, senderDeviceId, envelopes)`
-- `FetchQueuedAsync(userId, deviceId, limit)`
-- `AcknowledgeAsync(userId, deviceId, dto)`
-
-## 9.7 `EncryptedAttachmentService`
-
-- `InitiateUploadAsync(userId)`
-- `UploadChunkAsync(attachmentId, userId, stream, chunkIndex)`
-- `CompleteUploadAsync(attachmentId, userId)`
-- `DownloadCiphertextAsync(attachmentId, userId)`
-
-## 9.8 `AuthService`
-
-- `RegisterAsync(dto)` (ایجاد DomainUser + IdentityUser + signin)
-- `LoginAsync(dto)` (PasswordSignIn + online state)
-- `LogoutAsync()`
-- `GetCurrentUserAsync(identityUserId)`
-
-## 10. Repository Layer و قراردادها
-
-`Repository<T>` متدهای پایه را دارد:
-
-- `GetByIdAsync`
-- `GetAllAsync`
-- `FindAsync`
-- `AddAsync`
-- `Update`
-- `Remove`
-
-Repositoryهای تخصصی:
-
-- `ChatRepository`: `GetUserChatsAsync`, `GetDirectChatBetweenUsersAsync`, `GetSavedMessagesChatAsync`, `SearchChatsAsync`
-- `MessageRepository`: `GetChatMessagesAsync`, `GetMessageWithDetailsAsync`, `GetUnreadCountAsync`
-- `ReactionRepository`: `GetUserReactionAsync`, `GetMessageReactionsAsync`
-- `DeviceRepository`: `GetUserDevicesAsync`, `GetDeviceAsync`, `GetNextDeviceIdAsync`
-- `KeyBundleRepository`: مدیریت Identity/Signed/Kyber/OneTimePreKey + consume/remove
-- `MessageEnvelopeRepository`: queue fetch + mark delivered + cleanup
-- `EncryptedAttachmentRepository`: auth lookup + chunk progress + expired cleanup
-
-## 11. SignalR Contract
-
-Hub: `ChatHub` روی `/chatHub`
-
-### Client -> Server
-
-- `JoinChat(chatId)`
-- `LeaveChat(chatId)`
-- `StartTyping(chatId)`
-- `StopTyping(chatId)`
-- `MessageDelivered(chatId, messageId)`
-- `MessageSeen(chatId, messageId)`
-- `NotifyKeyChange(targetUserId)`
-
-### Server -> Client
-
-- `ReceiveMessage`
-- `MessageDeleted`
-- `ReactionUpdated`
-- `UserTyping`
-- `UserStoppedTyping`
-- `UserOnline`
-- `UserOffline`
-- `MessageStatusChanged`
-- `NewEnvelope` (در EnvelopesController)
-- `KeyBundleChanged` (در ChatHub)
-
-## 12. معماری فرانت‌اند (Angular)
-
-### Routing
-
-- `/auth/login` (guestGuard)
-- `/auth/register` (guestGuard)
-- `/` (ChatList + authGuard)
-- `/chat/:id` (ChatRoom + authGuard)
-
-### State اصلی
-
-- `AuthService`: session/currentUser/isAuthenticated/isLoading
-- `ChatService`: `chats`, `messages`, `typingUsers`
-- `ThemeService`: `currentTheme`, `isDarkMode`
-- `VoiceRecorderService`: `isRecording`, `recordingDuration`
-
-## 13. سرویس‌های کلیدی فرانت و متدها
-
-## 13.1 `ApiService`
-
-لایه‌ی HTTP کامل برای تمام endpointهای Auth/Chat/Message/User/File/E2EE.
-
-## 13.2 `AuthService`
-
-- `initialize()`
-- `login(email,password)`
-- `register(email,password,name,username?)`
-- `logout()`
-- `updateProfile(data)`
-
-## 13.3 `ChatService`
-
-متدهای اصلی:
-
-- لود اولیه: `loadChats()`, `ensureMessagesLoaded(chatId)`
-- mapperها: `mapChat`, `mapMessage`, `mapUser`
-- queryها: `getChatById`, `getMessagesForChat`, `getMessageById`
-- mutationها: `addMessage`, `updateMessage`, `deleteMessage`, `addReaction`, `markAsRead`
-- چت مستقیم: `startDirectChat(userId)`
-- realtime helpers: `setupSignalRHandlers`, `setTyping`, `updateUserOnlineStatus`
-
-## 13.4 `SignalRService`
-
-- lifecycle: `start`, `stop`
-- chat ops: `joinChat`, `leaveChat`
-- typing/status: `startTyping`, `stopTyping`, `messageDelivered`, `messageSeen`
-- subscription API: `onMessage`, `onReactionUpdated`, `onUserOnline`, ...
-
-## 13.5 `VoiceRecorderService`
-
-- `startRecording`
-- `stopRecording` (extract duration + waveform)
-- `cancelRecording`
-
-## 13.6 `AttachmentCryptoService`
-
-- `encryptAttachment`, `decryptAttachment`, `decryptAttachmentBlob`
-- `encryptVoiceNote`
-- `encryptThumbnail`, `decryptThumbnail`
-- `verifyDigest`
-
-## 13.7 `SignalProtocolService`
-
-- `initializeIdentity(deviceId)`
-- `processPreKeyBundle(bundle)`
-- `encrypt(userId,deviceId,plaintext)`
-- `decrypt(userId,deviceId,type,ciphertext)`
-- `hasSession(userId,deviceId)`
-- `computeSafetyNumber(...)`
-- `generatePreKeys(startId,count)`
-
-## 13.8 `E2eeMessageService`
-
-- setup: `setup(userId)`
-- send: `sendMessage`, `sendAttachment`, `sendVoiceNote`
-- receive: `fetchAndDecrypt`, `decryptEnvelope`
-- attachment decrypt: `downloadAndDecryptAttachment`, `downloadAndDecryptVoice`
-- prekey maintenance: `checkAndReplenishPreKeys`
-- saved messages: `initSavedMessages`, `sendSavedMessage`, `sendSavedAttachment`, `sendSavedVoiceNote`, `decryptSavedEnvelope`
-- امنیت محلی: `lockKeyStore`, `wipeAll`, `lockSavedVault`
-
-## 13.9 `SavedMessagesCryptoService`
-
-- `initialize`, `reset`
-- `encrypt`, `decrypt`
-- chain ratchet: `deriveMessageKey`, `advanceChain`, `hkdfDerive`
-
-## 13.10 `KeyStoreService`
-
-- `initialize`, `unlock`, `isInitialized`, `lock`, `wipe`, `touch`
-- identity/session/prekey/signedPrekey storage APIs
-- message cache APIs
-- saved-vault state & chain snapshot APIs
-
-## 14. کامپوننت‌های اصلی UI
-
-## 14.1 `ChatListComponent`
-
-مسئول:
-
-- نمایش لیست چت‌ها + pinned/saved
-- جستجو
-- پروفایل کاربر (edit name/username/bio/avatar)
-- New Chat modal و جستجوی کاربر
-- PWA banners (install/update)
-- تغییر theme
-
-متدهای کلیدی:
-
-- `openChat`, `openProfileCard`, `saveProfile`
-- `openNewChatModal`, `onUserSearchInput`, `selectUserForChat`
-- `animateProfileCardIn`, `animateNewChatModalIn`
-
-## 14.2 `ChatRoomComponent`
-
-مسئول:
-
-- نمایش پیام با date grouping
-- ارسال متن/فایل/ویس
-- reply, reaction, forward, delete
-- attachment panel, emoji picker
-- drag&drop upload
-- swipe-to-reply
-- context preview و peer profile overlay
-
-متدهای کلیدی:
-
-- `initiateSendMessage`, `uploadPendingAttachments`
-- `startRecording`, `stopAndSendRecording`
-- `addFilesToPending`, `shareCurrentLocation`
-- `onContextMenu`, `onContextAction`, `onContextReaction`
-- `openPeerProfile`, `closePeerProfileCard`
-- `scrollToBottom`, `scrollToMessage`
-
-## 15. امنیت و پایداری
-
-نکات امنیتی اعمال‌شده:
-
-- Identity cookie hardening (`HttpOnly`, `Secure`, `SameSite=Strict`)
-- امنیت هدرها + CSP در middleware
-- No-store cache روی `/api/*`
-- Rate limiting policy-level
-- server-side عضویت چت در `ChatHub` قبل از join/typing/status
-- E2EE key segregation (کلید خصوصی فقط کلاینت)
-
-## 16. وضعیت Build فعلی
-
-روی همین workspace تست شده:
-
-- `dotnet build TelegramClone.slnx` => موفق
-- `npm run build` در `ClientApp` => موفق
-- یک هشدار CommonJS برای `lottie-web` در Angular build وجود دارد
-
-## 17. E2EE Contracts (canonical reference)
-
-All behavior gaps documented in the earlier version of this section have been **resolved**.
-
-### 17.1 SignalR Real-Time Events
-
-| Event Name (canonical) | Direction | Payload | Trigger |
-|---|---|---|---|
-| `NewEnvelope` | Server → Client | `{ destinationDeviceId: number, timestamp: string }` | Server accepted an envelope addressed to this device |
-| `KeyBundleChanged` | Server → Client | `{ userId: string, timestamp: string }` | A user's key bundle was updated; sessions should be refreshed |
-
-Client handler registration (`signalr.service.ts`):
-
-```ts
-this.hubConnection.on('NewEnvelope', (data: { destinationDeviceId: number; timestamp: string }) => { ... });
-this.hubConnection.on('KeyBundleChanged', (data: { userId: string; timestamp: string }) => { ... });
-```
-
-### 17.2 Envelope Submission — `POST /api/envelopes`
-
-**Request body:**
+در `src/TelegramClone.Web/appsettings.json`:
 
 ```json
-{
-  "senderDeviceId": 1,
-  "envelopes": [
-    {
-      "destinationUserId": "guid",
-      "destinationDeviceId": 1,
-      "type": 1,
-      "content": "<base64>",
-      "envelopeId": "client-generated-uuid"
-    }
-  ]
+"MessageTextProtection": {
+  "MasterKey": "",
+  "ChunkSizeBytes": 512
 }
 ```
 
-- `senderDeviceId` — must belong to the authenticated user (403 otherwise).
-- `envelopeId` — client-generated UUID; server deduplicates on `(destinationDeviceId, envelopeId)`.
-- `content` — base64, max 256 KB decoded.
-- `type` — `1` = PreKey, `2` = Normal, `3` = SenderKey.
+### تولید MasterKey امن (PowerShell)
 
-**Response:**
-
-```json
-{
-  "submitted": 1,
-  "results": [
-    { "index": 0, "status": "accepted" }
-  ]
-}
+```powershell
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+[Convert]::ToBase64String($bytes)
 ```
 
-Per-item `status` values: `accepted`, `duplicate`, `rejected`.
+نکته‌ها:
 
-### 17.3 OTPK Count — `GET /api/keys/otpk-count/{deviceId}`
+1. در Production حتما `MasterKey` تنظیم شود.
+2. طول کلید بعد از decode باید دقیقا 32 بایت باشد.
+3. `ChunkSizeBytes` بزرگ‌تر یعنی throughput بهتر، کوچک‌تر یعنی granular بودن بیشتر.
 
-```json
-{ "available": 42 }
+---
+
+## API خلاصه
+
+### مسیر عادی چت
+
+- `POST /api/chats/{chatId}/messages`
+- `GET /api/chats/{chatId}/messages`
+- `PUT /api/chats/{chatId}/messages/{id}`
+- `DELETE /api/chats/{chatId}/messages/{id}`
+
+### E2EE
+
+- `POST /api/devices/register`
+- `POST /api/keys/bundle/{deviceId}`
+- `GET /api/keys/bundle/{userId}/{deviceId}`
+- `POST /api/envelopes`
+- `GET /api/envelopes/{deviceId}`
+- `POST /api/envelopes/ack/{deviceId}`
+
+### Attachments
+
+- `POST /api/attachments/upload`
+- `PUT /api/attachments/{attachmentId}/chunks/{chunkIndex}`
+- `POST /api/attachments/{attachmentId}/complete`
+- `GET /api/attachments/{attachmentId}`
+
+---
+
+## تست‌ها
+
+اجرای تست‌های integration:
+
+```bash
+dotnet test tests/TelegramClone.IntegrationTests/TelegramClone.IntegrationTests.csproj
 ```
 
-Canonical field name is **`available`** (not `count`).
+تست مربوط به رمزنگاری متن در دیتابیس:
 
-### 17.4 Key Bundle Fetch — `GET /api/keys/bundle/{userId}/{deviceId}`
+- ذخیره نشدن plaintext
+- امکان decrypt صحیح با context درست
+- fail شدن decrypt با context اشتباه (chat/message/chunk)
 
-```json
-{
-  "userId": "guid",
-  "deviceId": 1,
-  "registrationId": 12345,
-  "identityPublicKey": "<base64>",
-  "signedPreKey": { "keyId": 1, "publicKey": "<base64>", "signature": "<base64>" },
-  "kyberPreKey": null,
-  "oneTimePreKey": { "keyId": 5, "publicKey": "<base64>", "signature": null }
-}
+---
+
+## ساختار پوشه‌ها
+
+```text
+src/
+  TelegramClone.Domain/
+  TelegramClone.Application/
+  TelegramClone.Infrastructure/
+  TelegramClone.Web/
+    ClientApp/
+tests/
+  TelegramClone.IntegrationTests/
 ```
 
-- `oneTimePreKey` is `null` when all OTPKs are consumed.
-- OTPK consumption is atomic (SQL Server: `UPDLOCK, ROWLOCK, READPAST`; wrapped in explicit transaction).
+---
 
-### 17.5 Device Ownership Enforcement
+## نکات امنیتی و محدودیت‌ها
 
-All envelope and key endpoints that accept a `deviceId` parameter validate that the device belongs to the authenticated user. Requests with a mismatched device return **403**:
+این جدول خیلی مهم است:
 
-| Endpoint | Parameter |
-|---|---|
-| `POST /api/envelopes` | `senderDeviceId` in body |
-| `GET /api/envelopes/{deviceId}` | path |
-| `POST /api/envelopes/ack/{deviceId}` | path |
-| `POST /api/keys/bundle/{deviceId}` | path |
-| `POST /api/keys/replenish/{deviceId}` | path |
-| `GET /api/keys/otpk-count/{deviceId}` | path |
+| مسیر | سرور plaintext را می‌بیند؟ | رمزنگاری در دیتابیس | E2EE واقعی |
+|---|---:|---:|---:|
+| `/api/chats/...` | بله | بله | خیر |
+| `/api/envelopes` | خیر | سرور فقط ciphertext دارد | بله |
 
-### 17.6 Rate Limiting Policies
+پس:
 
-| Policy | Limit | Scope | Applied To |
-|---|---|---|---|
-| `auth` | 5/min | per IP | `AuthController` |
-| `envelopes` | 60/min | per user | `EnvelopesController` |
-| `keys` | 30/min | per user | `KeysController` |
-| `uploads` | 10/min | per user | `AttachmentsController` |
+1. اگر «سرور نباید متن را ببیند» هدف اصلی است، باید مسیر E2EE (`envelopes`) معیار شما باشد.
+2. مسیر عادی چت الان از نظر At-Rest خیلی امن‌تر شده (کلید پویا per chat/message/chunk)، ولی ماهیتا E2EE نیست.
+3. فرمت رمزنگاری متن پیام اکنون `v2` است.
+4. در وضعیت فعلی پروژه، پیام‌های قدیمیِ v1 به‌صورت پیش‌فرض decrypt نمی‌شوند (اگر migration/backward لازم باشد باید جداگانه اضافه شود).
 
-### 17.7 Envelope Queue Limits & Cleanup
+---
 
-- Per-device queue limit: **1 000** undelivered envelopes.
-- Expired envelopes (>30 days) cleaned up hourly by `EnvelopeCleanupService`.
+## جمع‌بندی
 
-### 17.8 Attachment Digest Verification
+این پروژه هم برای محصول پیام‌رسان real-time مناسب است، هم برای مطالعه امنیت کاربردی:
 
-Client-side: `verifyDigest()` is called **before** decryption in `downloadAndDecryptAttachment` / `downloadAndDecryptVoice`. If the SHA-256 digest doesn't match, decryption is skipped and an error is thrown.
+- امنیت دیتابیس پیام‌ها با key derivation سلسله‌ای
+- کانال E2EE چنددستگاهی با Signal Protocol
+- رمزنگاری فایل/ویس با stream encryption
+- زیرساخت تست‌پذیر، قابل توسعه، و آماده ارتقای بیشتر
 
-## 18. فایل‌های مهم برای شروع مطالعه
-
-- `src/TelegramClone.Web/Program.cs`
-- `src/TelegramClone.Infrastructure/Data/TelegramDbContext.cs`
-- `src/TelegramClone.Application/Services/*.cs`
-- `src/TelegramClone.Web/Controllers/Api/*.cs`
-- `src/TelegramClone.Web/Hubs/ChatHub.cs`
-- `src/TelegramClone.Web/ClientApp/src/core/services/chat.service.ts`
-- `src/TelegramClone.Web/ClientApp/src/features/chat-room/chat-room.component.ts`
-- `src/TelegramClone.Web/ClientApp/src/core/services/e2ee-message.service.ts`
-
+اگر بخواهی، در قدم بعدی می‌توانم یک نسخه انگلیسی حرفه‌ای همین README هم کنار این نسخه اضافه کنم (مثلا `README.en.md`) تا برای مخاطب بین‌المللی هم آماده باشد.

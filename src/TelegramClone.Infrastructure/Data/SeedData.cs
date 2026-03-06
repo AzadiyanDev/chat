@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using TelegramClone.Application.Interfaces;
 using TelegramClone.Domain.Entities;
 using TelegramClone.Infrastructure.Identity;
 
@@ -49,6 +50,7 @@ public static class SeedData
         using var scope = serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<TelegramDbContext>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var messageTextProtection = scope.ServiceProvider.GetRequiredService<IMessageTextProtectionService>();
 
         // InMemory provider does not support migrations; use EnsureCreated instead
         if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
@@ -61,6 +63,9 @@ public static class SeedData
 
         // Migrate any external avatar URLs to bundled local assets.
         await MigrateLegacyExternalAvatarsAsync(context);
+
+        // Migrate old plaintext message bodies to encrypted chunks.
+        await MigrateLegacyPlaintextMessagesAsync(context, messageTextProtection);
 
         if (await context.DomainUsers.AnyAsync())
         {
@@ -122,6 +127,45 @@ public static class SeedData
         foreach (var user in usersToUpdate)
         {
             user.AvatarUrl = ResolveLocalAvatarPath(user.Id);
+        }
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task MigrateLegacyPlaintextMessagesAsync(
+        TelegramDbContext context,
+        IMessageTextProtectionService messageTextProtection)
+    {
+        var messagesToMigrate = await context.Messages
+            .Include(m => m.TextChunks)
+            .Where(m => !string.IsNullOrEmpty(m.Text))
+            .ToListAsync();
+
+        if (messagesToMigrate.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var message in messagesToMigrate)
+        {
+            if (message.TextChunks.Count > 0)
+            {
+                message.Text = null;
+                continue;
+            }
+
+            var encryptedChunks = messageTextProtection.Encrypt(message.ChatId, message.Id, message.Text!);
+            foreach (var chunk in encryptedChunks)
+            {
+                message.TextChunks.Add(new MessageTextChunk
+                {
+                    ChunkIndex = chunk.ChunkIndex,
+                    Payload = chunk.Payload
+                });
+            }
+
+            // Remove plaintext from DB after successful chunk encryption.
+            message.Text = null;
         }
 
         await context.SaveChangesAsync();

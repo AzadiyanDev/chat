@@ -13,6 +13,7 @@ public class TelegramDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Chat> Chats => Set<Chat>();
     public DbSet<ChatParticipant> ChatParticipants => Set<ChatParticipant>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<MessageTextChunk> MessageTextChunks => Set<MessageTextChunk>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<VoiceNote> VoiceNotes => Set<VoiceNote>();
     public DbSet<Reaction> Reactions => Set<Reaction>();
@@ -98,6 +99,21 @@ public class TelegramDbContext : IdentityDbContext<ApplicationUser>
 
             entity.HasIndex(e => new { e.ChatId, e.IsDeleted, e.Timestamp });
             entity.HasIndex(e => e.SenderId);
+        });
+
+        // MessageTextChunk (encrypted message body chunks)
+        builder.Entity<MessageTextChunk>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Payload).HasColumnType("varbinary(max)").IsRequired();
+            entity.Property(e => e.ChunkIndex).IsRequired();
+
+            entity.HasOne(e => e.Message)
+                .WithMany(m => m.TextChunks)
+                .HasForeignKey(e => e.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.MessageId, e.ChunkIndex }).IsUnique();
         });
 
         // Attachment

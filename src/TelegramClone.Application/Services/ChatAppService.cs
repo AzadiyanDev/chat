@@ -11,16 +11,22 @@ public class ChatAppService : IChatAppService
 {
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
+    private readonly IMessageTextProtectionService _messageTextProtection;
 
-    public ChatAppService(IUnitOfWork unitOfWork, IMapper mapper)
+    public ChatAppService(
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        IMessageTextProtectionService messageTextProtection)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
+        _messageTextProtection = messageTextProtection;
     }
 
     public async Task<IEnumerable<ChatListItemDto>> GetUserChatsAsync(Guid userId)
     {
         var chats = (await _unitOfWork.Chats.GetUserChatsAsync(userId)).ToList();
+        DecryptChatMessages(chats);
         var unreadByChat = await BuildUnreadMapAsync(chats, userId);
 
         var mapped = _mapper.Map<List<ChatListItemDto>>(chats);
@@ -222,6 +228,7 @@ public class ChatAppService : IChatAppService
     public async Task<IEnumerable<ChatListItemDto>> SearchChatsAsync(Guid userId, string query)
     {
         var chats = (await _unitOfWork.Chats.SearchChatsAsync(userId, query)).ToList();
+        DecryptChatMessages(chats);
         var unreadByChat = await BuildUnreadMapAsync(chats, userId);
 
         var mapped = _mapper.Map<List<ChatListItemDto>>(chats);
@@ -287,6 +294,21 @@ public class ChatAppService : IChatAppService
         if (participant == null) return 0;
 
         return await _unitOfWork.Messages.GetUnreadCountAsync(chat.Id, userId, participant.LastReadAt);
+    }
+
+    private void DecryptChatMessages(IEnumerable<Chat> chats)
+    {
+        foreach (var chat in chats)
+        {
+            foreach (var message in chat.Messages)
+            {
+                message.Text = _messageTextProtection.Decrypt(
+                    message.ChatId,
+                    message.Id,
+                    message.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
+                    message.Text);
+            }
+        }
     }
 
     private static bool CanManageMembers(ChatParticipant participant)
