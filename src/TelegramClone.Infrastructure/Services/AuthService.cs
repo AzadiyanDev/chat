@@ -84,9 +84,21 @@ public class AuthService : IAuthService
 
     public async Task<AuthResultDto> LoginAsync(AuthDto dto)
     {
-        var result = await _signInManager.PasswordSignInAsync(
-            dto.Email, dto.Password, isPersistent: true, lockoutOnFailure: false);
+        // Login is intentionally credential-only (email/username + password).
+        // No device registration or device ownership checks are performed here.
+        var identityUser = await _userManager.FindByEmailAsync(dto.Email)
+                           ?? await _userManager.FindByNameAsync(dto.Email);
+        if (identityUser == null)
+        {
+            return new AuthResultDto
+            {
+                Succeeded = false,
+                Error = "Invalid email or password"
+            };
+        }
 
+        var result = await _signInManager.CheckPasswordSignInAsync(
+            identityUser, dto.Password, lockoutOnFailure: false);
         if (!result.Succeeded)
         {
             return new AuthResultDto
@@ -96,11 +108,7 @@ public class AuthService : IAuthService
             };
         }
 
-        var identityUser = await _userManager.FindByEmailAsync(dto.Email);
-        if (identityUser == null)
-        {
-            return new AuthResultDto { Succeeded = false, Error = "User not found" };
-        }
+        await _signInManager.SignInAsync(identityUser, isPersistent: true);
 
         var domainUser = await _unitOfWork.Users.GetByIdentityIdAsync(identityUser.Id);
         if (domainUser != null)

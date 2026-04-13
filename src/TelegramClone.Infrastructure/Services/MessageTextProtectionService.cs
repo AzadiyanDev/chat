@@ -166,6 +166,14 @@ public class MessageTextProtectionService : IMessageTextProtectionService
                 output.Write(plainChunk);
             }
         }
+        catch (CryptographicException)
+        {
+            return fallbackPlaintext;
+        }
+        catch (InvalidOperationException)
+        {
+            return fallbackPlaintext;
+        }
         finally
         {
             CryptographicOperations.ZeroMemory(chatKey);

@@ -137,8 +137,13 @@ public static class SeedData
         IMessageTextProtectionService messageTextProtection)
     {
         var messagesToMigrate = await context.Messages
-            .Include(m => m.TextChunks)
             .Where(m => !string.IsNullOrEmpty(m.Text))
+            .Select(m => new
+            {
+                m.Id,
+                m.ChatId,
+                Text = m.Text!
+            })
             .ToListAsync();
 
         if (messagesToMigrate.Count == 0)
@@ -146,29 +151,40 @@ public static class SeedData
             return;
         }
 
+        var chunksToInsert = new List<MessageTextChunk>();
+
         foreach (var message in messagesToMigrate)
         {
-            if (message.TextChunks.Count > 0)
-            {
-                message.Text = null;
-                continue;
-            }
+            var alreadyHasChunks = await context.MessageTextChunks
+                .AsNoTracking()
+                .AnyAsync(c => c.MessageId == message.Id);
 
-            var encryptedChunks = messageTextProtection.Encrypt(message.ChatId, message.Id, message.Text!);
-            foreach (var chunk in encryptedChunks)
+            if (!alreadyHasChunks)
             {
-                message.TextChunks.Add(new MessageTextChunk
+                var encryptedChunks = messageTextProtection.Encrypt(message.ChatId, message.Id, message.Text);
+                foreach (var chunk in encryptedChunks)
                 {
-                    ChunkIndex = chunk.ChunkIndex,
-                    Payload = chunk.Payload
-                });
+                    chunksToInsert.Add(new MessageTextChunk
+                    {
+                        MessageId = message.Id,
+                        ChunkIndex = chunk.ChunkIndex,
+                        Payload = chunk.Payload
+                    });
+                }
+
+                if (encryptedChunks.Count > 0)
+                {
+                    context.MessageTextChunks.AddRange(chunksToInsert);
+                    chunksToInsert.Clear();
+                    await context.SaveChangesAsync();
+                }
             }
 
-            // Remove plaintext from DB after successful chunk encryption.
-            message.Text = null;
+            // Remove plaintext from DB after successful chunk encryption (or when chunks already exist).
+            await context.Messages
+                .Where(m => m.Id == message.Id && m.Text != null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.Text, (string?)null));
         }
-
-        await context.SaveChangesAsync();
     }
 
     private static string ResolveLocalAvatarPath(Guid userId)

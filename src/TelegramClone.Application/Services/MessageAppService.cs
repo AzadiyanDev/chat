@@ -1,4 +1,5 @@
 using AutoMapper;
+using System.Security.Cryptography;
 using TelegramClone.Application.DTOs;
 using TelegramClone.Application.Interfaces;
 using TelegramClone.Domain.Entities;
@@ -219,19 +220,38 @@ public class MessageAppService : IMessageAppService
         if (message == null)
             return;
 
-        message.Text = _messageTextProtection.Decrypt(
-            message.ChatId,
-            message.Id,
-            message.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
-            message.Text);
+        try
+        {
+            message.Text = _messageTextProtection.Decrypt(
+                message.ChatId,
+                message.Id,
+                message.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
+                message.Text);
+        }
+        catch (CryptographicException)
+        {
+            // Keep API resilient when historical ciphertext cannot be decrypted with current key material.
+        }
+        catch (InvalidOperationException)
+        {
+        }
 
         if (message.ReplyTo != null)
         {
-            message.ReplyTo.Text = _messageTextProtection.Decrypt(
-                message.ReplyTo.ChatId,
-                message.ReplyTo.Id,
-                message.ReplyTo.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
-                message.ReplyTo.Text);
+            try
+            {
+                message.ReplyTo.Text = _messageTextProtection.Decrypt(
+                    message.ReplyTo.ChatId,
+                    message.ReplyTo.Id,
+                    message.ReplyTo.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
+                    message.ReplyTo.Text);
+            }
+            catch (CryptographicException)
+            {
+            }
+            catch (InvalidOperationException)
+            {
+            }
         }
     }
 }

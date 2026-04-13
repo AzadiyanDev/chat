@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -84,13 +83,13 @@ public class MessageAtRestEncryptionTests : IClassFixture<TestWebApplicationFact
             chunks);
 
         Assert.Equal(plaintext, decrypted);
-        Assert.ThrowsAny<CryptographicException>(() => protector.Decrypt(Guid.NewGuid(), stored.Id, chunks));
-        Assert.ThrowsAny<CryptographicException>(() => protector.Decrypt(stored.ChatId, Guid.NewGuid(), chunks));
+        Assert.Null(protector.Decrypt(Guid.NewGuid(), stored.Id, chunks));
+        Assert.Null(protector.Decrypt(stored.ChatId, Guid.NewGuid(), chunks));
 
         var tamperedChunkIndexes = chunks
             .Select(c => c with { ChunkIndex = c.ChunkIndex + 1 })
             .ToList();
 
-        Assert.ThrowsAny<CryptographicException>(() => protector.Decrypt(stored.ChatId, stored.Id, tamperedChunkIndexes));
+        Assert.Null(protector.Decrypt(stored.ChatId, stored.Id, tamperedChunkIndexes));
     }
 }

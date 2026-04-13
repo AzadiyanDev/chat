@@ -3,15 +3,31 @@ using TelegramClone.Infrastructure;
 using TelegramClone.Infrastructure.Data;
 using TelegramClone.Web.Hubs;
 using TelegramClone.Web.Services;
+using Microsoft.AspNetCore.StaticFiles;
 using System.Threading.RateLimiting;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = ResolveContentRootPath()
+});
 
 // ──── Clean Architecture Layers ────
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Server=(localdb)\\mssqllocaldb;Database=TelegramClone;Trusted_Connection=True;MultipleActiveResultSets=true";
 
-var uploadPath = Path.Combine(builder.Environment.ContentRootPath, "Uploads");
+var webRootPath = builder.Environment.WebRootPath;
+if (string.IsNullOrWhiteSpace(webRootPath))
+{
+    webRootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+}
+
+if (!Directory.Exists(webRootPath))
+{
+    Directory.CreateDirectory(webRootPath);
+}
+
+var uploadPath = Path.Combine(webRootPath, "uploads");
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(connectionString, uploadPath);
@@ -158,11 +174,19 @@ var clientAppDist = Path.Combine(builder.Environment.ContentRootPath, "ClientApp
 if (!Directory.Exists(clientAppDist)) Directory.CreateDirectory(clientAppDist);
 
 var spaFileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(clientAppDist);
+var staticContentTypeProvider = new FileExtensionContentTypeProvider();
+staticContentTypeProvider.Mappings[".woff2"] = "font/woff2";
+staticContentTypeProvider.Mappings[".woff"] = "font/woff";
+staticContentTypeProvider.Mappings[".ttf"] = "font/ttf";
+staticContentTypeProvider.Mappings[".otf"] = "font/otf";
+staticContentTypeProvider.Mappings[".eot"] = "application/vnd.ms-fontobject";
+staticContentTypeProvider.Mappings[".svg"] = "image/svg+xml";
 app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = spaFileProvider });
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = spaFileProvider,
     RequestPath = "",
+    ContentTypeProvider = staticContentTypeProvider,
     OnPrepareResponse = ctx =>
     {
         var path = ctx.Context.Request.Path.Value ?? string.Empty;
@@ -178,12 +202,15 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
-app.UseStaticFiles(); // wwwroot
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = staticContentTypeProvider
+}); // wwwroot
 
 // ──── Upload files ────
 // Encrypted attachments are served through /api/attachments/{id} (authenticated).
 // Legacy uploads path is also used by chat attachments/voice messages in this client.
-var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "Uploads");
+var uploadsPath = uploadPath;
 if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
 
 var avatarsPath = Path.Combine(uploadsPath, "avatars");
@@ -192,6 +219,7 @@ app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(avatarsPath),
     RequestPath = "/uploads/avatars",
+    ContentTypeProvider = staticContentTypeProvider,
     OnPrepareResponse = ctx =>
     {
         // Cache avatars but no other uploads
@@ -204,7 +232,8 @@ if (!Directory.Exists(voicesPath)) Directory.CreateDirectory(voicesPath);
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(voicesPath),
-    RequestPath = "/uploads/voices"
+    RequestPath = "/uploads/voices",
+    ContentTypeProvider = staticContentTypeProvider
 });
 
 var attachmentsPath = Path.Combine(uploadsPath, "attachments");
@@ -213,6 +242,7 @@ app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(attachmentsPath),
     RequestPath = "/uploads/attachments",
+    ContentTypeProvider = staticContentTypeProvider,
     ServeUnknownFileTypes = true,
     DefaultContentType = "application/octet-stream"
 });
@@ -238,6 +268,25 @@ app.MapFallback(async context =>
 });
 
 app.Run();
+
+static string ResolveContentRootPath()
+{
+    var currentDirectory = Directory.GetCurrentDirectory();
+    var baseDirectory = AppContext.BaseDirectory;
+
+    var currentHasConfig = File.Exists(Path.Combine(currentDirectory, "appsettings.json"));
+    var currentHasClientDist = Directory.Exists(Path.Combine(currentDirectory, "ClientApp", "dist"));
+    if (currentHasConfig && currentHasClientDist)
+        return currentDirectory;
+
+    var baseHasConfig = File.Exists(Path.Combine(baseDirectory, "appsettings.json"));
+    var baseHasClientDist = Directory.Exists(Path.Combine(baseDirectory, "ClientApp", "dist"));
+    if (baseHasConfig && baseHasClientDist)
+        return baseDirectory;
+
+    // Fallback to current directory in edge cases (tests/custom hosts).
+    return currentDirectory;
+}
 
 // Marker class for WebApplicationFactory<Program> in integration tests
 public partial class Program { }

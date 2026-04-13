@@ -1,4 +1,5 @@
 using AutoMapper;
+using System.Security.Cryptography;
 using TelegramClone.Application.DTOs;
 using TelegramClone.Application.Interfaces;
 using TelegramClone.Domain.Entities;
@@ -302,11 +303,20 @@ public class ChatAppService : IChatAppService
         {
             foreach (var message in chat.Messages)
             {
-                message.Text = _messageTextProtection.Decrypt(
-                    message.ChatId,
-                    message.Id,
-                    message.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
-                    message.Text);
+                try
+                {
+                    message.Text = _messageTextProtection.Decrypt(
+                        message.ChatId,
+                        message.Id,
+                        message.TextChunks.Select(c => new MessageTextEncryptedChunk(c.ChunkIndex, c.Payload)),
+                        message.Text);
+                }
+                catch (CryptographicException)
+                {
+                }
+                catch (InvalidOperationException)
+                {
+                }
             }
         }
     }
