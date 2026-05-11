@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/azadiyanChat.Application/azadiyanChat.Application.csproj" />
+    <Project Path="src/azadiyanChat.Domain/azadiyanChat.Domain.csproj" />
+    <Project Path="src/azadiyanChat.Infrastructure/azadiyanChat.Infrastructure.csproj" />
+    <Project Path="src/azadiyanChat.Web/azadiyanChat.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/azadiyanChat.IntegrationTests/azadiyanChat.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
